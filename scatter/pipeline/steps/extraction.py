@@ -3,7 +3,7 @@ import json
 from tqdm import tqdm
 import pandas as pd
 from langchain.chat_models import ChatOpenAI
-from utils import messages, update_progress
+from utils import messages, update_progress, get_local_llm
 import concurrent.futures
 
 
@@ -44,15 +44,22 @@ def extract_batch(batch, prompt, model, workers):
 
 
 def extract_arguments(input, prompt, model, retries=3):
-    llm = ChatOpenAI(model_name=model, temperature=0.0)
-    response = llm(messages=messages(prompt, input)).content.strip()
+    # local: で始まる場合はローカルAPI経由で呼び出す
+    if model.startswith("local:"):
+        llm = get_local_llm(model)
+        response = llm(messages=messages(prompt, input)).content.strip()
+    else:
+        llm = ChatOpenAI(model_name=model, temperature=0.0)
+        response = llm(messages=messages(prompt, input)).content.strip()
+    print(f"Input: {input}")  # デバッグ用に入力を表示
+    print(f"Output: {response}")  # デバッグ用に出力を表示
     try:
         obj = json.loads(response)
         # LLM sometimes returns valid JSON string
         if isinstance(obj, str):
             obj = [obj]
         items = [a.strip() for a in obj]
-        items = filter(None, items)  # omit empty strings
+        items = list(filter(None, items))  # omit empty strings
         return items
     except json.decoder.JSONDecodeError as e:
         print("JSON error:", e)

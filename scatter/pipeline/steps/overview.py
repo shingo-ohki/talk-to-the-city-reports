@@ -6,7 +6,7 @@ from typing import List
 import numpy as np
 import pandas as pd
 from langchain.chat_models import ChatOpenAI
-from utils import messages, update_progress
+from utils import messages, update_progress, get_local_llm
 
 
 def overview(config):
@@ -28,8 +28,12 @@ def overview(config):
         input += f"# Cluster {i}/{len(ids)}: {labels.loc[id]['label']}\n\n"
         input += takeaways.loc[id]['takeaways'] + '\n\n'
 
-    llm = ChatOpenAI(model_name=model, temperature=0.0)
-    response = llm(messages=messages(prompt, input)).content.strip()
+    if model.startswith("local:"):
+        llm = get_local_llm(model)
+        response = llm(messages=messages(prompt, input)).content.strip()
+    else:
+        llm = ChatOpenAI(model_name=model, temperature=0.0)
+        response = llm(messages=messages(prompt, input)).content.strip()
 
     with open(path, 'w') as file:
         file.write(response)

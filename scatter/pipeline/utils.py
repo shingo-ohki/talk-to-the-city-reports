@@ -1,5 +1,9 @@
 from langchain.schema import AIMessage, HumanMessage, SystemMessage
+from langchain.chat_models import ChatOpenAI
+from langchain.chat_models import ChatOllama
 from datetime import datetime, timedelta
+
+import requests
 import json
 import os
 import traceback
@@ -293,3 +297,48 @@ def termination(config, error=None):
             'error_stack_trace': traceback.format_exc()
         })
         raise error
+
+
+def message_to_dict(message):
+    if isinstance(message, SystemMessage):
+        return {"role": "system", "content": message.content}
+    elif isinstance(message, HumanMessage):
+        return {"role": "user", "content": message.content}
+    elif isinstance(message, AIMessage):
+        return {"role": "assistant", "content": message.content}
+    else:
+        raise TypeError(f"Object of type {message.__class__.__name__} is not JSON serializable")
+
+def local_llm_embedding(prompt_text, model):
+    """
+    ローカルAIを呼び出し、埋め込み生成を行う関数。
+    modelは "local:モデル名" の形式の指定を想定。
+    """
+    model_name = model.split("local:")[1]
+    response = requests.post("http://ollama:11434/api/embeddings", json={
+        "model": model_name,
+        "prompt": prompt_text
+    })
+    response.raise_for_status()
+    return response.json().get("embedding", "No embedding key found")
+
+
+OLLAMA_CONFIG = {
+    'base_url': 'http://ollama:11434/v1',
+    'default_temperature': 0.0,
+    'timeout': 60,
+    'max_retries': 3,
+    'api_key': 'ollama'
+}
+
+def get_local_llm(model, temperature=None):
+    """
+    ローカルLLMのインスタンスを生成する関数。
+    modelは "local:モデル名" の形式の指定を想定。
+    """
+    model_name = model.split("local:")[1]
+    return ChatOllama(
+        model=model_name,
+        temperature=temperature or OLLAMA_CONFIG['default_temperature'],
+        base_url="http://ollama:11434"
+    )

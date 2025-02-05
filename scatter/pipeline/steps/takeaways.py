@@ -6,7 +6,7 @@ from typing import List
 import numpy as np
 import pandas as pd
 from langchain.chat_models import ChatOpenAI
-from utils import messages, update_progress
+from utils import messages, update_progress, get_local_llm
 
 
 def takeaways(config):
@@ -43,7 +43,11 @@ def takeaways(config):
 
 
 def generate_takeaways(args_sample, prompt, model):
-    llm = ChatOpenAI(model_name=model, temperature=0.0)
-    input = "\n".join(args_sample)
-    response = llm(messages=messages(prompt, input)).content.strip()
+    input_text = "\n".join(args_sample)
+    if model.startswith("local:"):
+        llm = get_local_llm(model)
+        response = llm(messages=messages(prompt, input_text)).content.strip()
+    else:
+        llm = ChatOpenAI(model_name=model, temperature=0.0)
+        response = llm(messages=messages(prompt, input_text)).content.strip()
     return response

@@ -1,11 +1,13 @@
 """Create labels for the clusters."""
 
 from tqdm import tqdm
+import os
 from typing import List
 import numpy as np
 import pandas as pd
 from langchain.chat_models import ChatOpenAI
-from utils import messages, update_progress
+from utils import messages, update_progress, get_local_llm
+import json
 
 
 def labelling(config):
@@ -51,11 +53,15 @@ def labelling(config):
 
 
 def generate_label(question, args_sample, args_sample_outside, prompt, model):
-    llm = ChatOpenAI(model_name=model, temperature=0.0)
     outside = '\n * ' + '\n * '.join(args_sample_outside)
     inside = '\n * ' + '\n * '.join(args_sample)
     input = f"Question of the consultation:{question}\n\n" + \
         f"Examples of arguments OUTSIDE the cluster:\n {outside}" + \
         f"Examples of arguments INSIDE the cluster:\n {inside}"
-    response = llm(messages=messages(prompt, input)).content.strip()
+    if model.startswith("local:"):
+        llm = get_local_llm(model)
+        response = llm(messages=messages(prompt, input)).content.strip()
+    else:
+        llm = ChatOpenAI(model_name=model, temperature=0.0)
+        response = llm(messages=messages(prompt, input)).content.strip()
     return response
