@@ -1,8 +1,21 @@
-
-from langchain.embeddings import OpenAIEmbeddings
+from transformers import AutoTokenizer, AutoModel
+import torch
 import pandas as pd
 from tqdm import tqdm
 
+# LINE DistilBERTのモデルとトークナイザーを初期化
+tokenizer = AutoTokenizer.from_pretrained("line-corporation/line-distilbert-base-japanese", trust_remote_code=True)
+model = AutoModel.from_pretrained("line-corporation/line-distilbert-base-japanese")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+
+class LineDistilBERTEmbeddings:
+    def embed_documents(self, texts):
+        inputs = tokenizer(texts, padding=True, truncation=True, return_tensors="pt").to(device)
+        with torch.no_grad():
+            outputs = model(**inputs)
+        embeddings = outputs.last_hidden_state[:, 0, :].cpu().numpy()
+        return embeddings.tolist()
 
 def embedding(config):
     dataset = config['output_dir']
@@ -11,7 +24,7 @@ def embedding(config):
     embeddings = []
     for i in tqdm(range(0, len(arguments), 1000)):
         args = arguments["argument"].tolist()[i: i + 1000]
-        embeds = OpenAIEmbeddings().embed_documents(args)
+        embeds = LineDistilBERTEmbeddings().embed_documents(args)
         embeddings.extend(embeds)
     df = pd.DataFrame(
         [
