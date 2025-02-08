@@ -1,0 +1,81 @@
+services:
+  devcontainer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: t3c-dev-devcontainer:latest
+    user: "1000:1000"
+    volumes:
+      - .:/workspaces/t3c-dev
+      - ~/.gitconfig:/home/ubuntu/.gitconfig:ro
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    command: sleep infinity
+
+  worker:
+    image: t3c-dev-devcontainer:latest
+    user: "1000:1000"
+    volumes:
+      - .:/workspaces/t3c-dev
+    working_dir: /workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/pipeline
+    command: >
+      bash -c "
+        source /workspaces/t3c-dev/venv/bin/activate && 
+        python ../app/worker.py
+      "
+    depends_on:
+      - redis
+      - ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+
+  ollama:
+    image: ollama/ollama:latest
+    volumes:
+      - ./ollama:/root/.ollama
+    ports:
+      - "11434:11434"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  webapp:
+    build:
+      context: ./src/ollama/talk-to-the-city-reports/scatter/app
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    user: "1000:1000"
+    volumes:
+      - ./src/ollama/talk-to-the-city-reports/scatter/pipeline/inputs:/app/inputs
+      - ./src/ollama/talk-to-the-city-reports/scatter/pipeline/outputs:/app/outputs
+      - ./src/ollama/talk-to-the-city-reports/scatter/pipeline/configs:/app/configs
+      - .:/workspaces/t3c-dev  # プロジェクト全体をマウント
+    working_dir: /workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/app
+    depends_on:
+      - ollama
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"

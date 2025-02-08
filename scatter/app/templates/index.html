@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Talk to the City - Upload</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        .upload-container {
+            border: 2px dashed #ccc;
+            padding: 20px;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .status {
+            margin: 20px 0;
+            padding: 10px;
+            display: none;
+        }
+        .error {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        .success {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        #progress-info {
+            color: #666;
+            font-style: italic;
+        }
+        .sample-link {
+            margin-top: 10px;
+            font-size: 0.9em;
+            color: #666;
+        }
+        .sample-link a {
+            color: #0066cc;
+            text-decoration: none;
+        }
+        .sample-link a:hover {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+<body>
+    <h1>Talk to the City</h1>
+    <div class="upload-container">
+        <h2>CSVファイルをアップロード</h2>
+        <form id="uploadForm">
+            <input type="file" id="fileInput" accept=".csv" required>
+            <button type="submit">アップロード</button>
+        </form>
+        <p class="sample-link">
+            <a href="/sample" download="sample_input.csv">サンプルCSVファイル</a>
+        </p>
+    </div>
+    <div id="status" class="status">
+        <div id="status-message"></div>
+        <div id="progress-info" style="margin-top: 10px; font-size: 0.9em;"></div>
+    </div>
+    <script>
+        async function checkStatus(jobId) {
+            const response = await fetch(`/status/${jobId}`);
+            const data = await response.json();
+            const status = document.getElementById('status');
+            const statusMessage = document.getElementById('status-message');
+            const progressInfo = document.getElementById('progress-info');
+
+            status.style.display = 'block';
+
+            if (data.status === 'completed') {
+                const projectId = jobId.replace('job_', 'project_');
+                status.className = 'status success';
+                statusMessage.innerHTML = `処理が完了しました<br>
+                    <a href="/pipeline/outputs/${projectId}/report/">レポートを表示</a>`;
+                progressInfo.textContent = '';
+            } else if (data.status === 'failed') {
+                status.className = 'status error';
+                statusMessage.textContent = `エラー: ${data.error}`;
+                progressInfo.textContent = '';
+            } else {
+                status.className = 'status';
+                statusMessage.textContent = '処理中...';
+                
+                if (data.current_step) {
+                    let progressText = `現在の処理: ${data.current_step}`;
+                    if (data.progress && data.progress.total > 0) {
+                        const percent = Math.round((data.progress.current / data.progress.total) * 100);
+                        progressText += ` (${percent}% 完了)`;
+                    }
+                    progressInfo.textContent = progressText;
+                }
+                
+                setTimeout(() => checkStatus(jobId), 2000);  // 2秒ごとに更新
+            }
+        }
+
+        document.getElementById('uploadForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const status = document.getElementById('status');
+            const statusMessage = document.getElementById('status-message');
+            const progressInfo = document.getElementById('progress-info');
+            const formData = new FormData();
+            formData.append('file', document.getElementById('fileInput').files[0]);
+
+            try {
+                status.className = 'status';
+                statusMessage.textContent = '処理中...';
+                progressInfo.textContent = '';
+                status.style.display = 'block';
+
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    checkStatus(data.job_id);
+                } else {
+                    status.className = 'status error';
+                    statusMessage.textContent = data.error;
+                    progressInfo.textContent = '';
+                }
+            } catch (error) {
+                status.className = 'status error';
+                statusMessage.textContent = 'エラーが発生しました';
+                progressInfo.textContent = '';
+            }
+        };
+    </script>
+</body>
+</html>
