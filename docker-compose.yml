@@ -4,8 +4,10 @@ services:
       context: .
       dockerfile: Dockerfile
     image: t3c-dev-devcontainer:latest
+    user: "1000:1000"
     volumes:
       - .:/workspaces/t3c-dev
+      - ~/.gitconfig:/home/ubuntu/.gitconfig:ro
     deploy:
       resources:
         reservations:
@@ -20,6 +22,7 @@ services:
 
   worker:
     image: t3c-dev-devcontainer:latest
+    user: "1000:1000"
     volumes:
       - .:/workspaces/t3c-dev
     working_dir: /workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/pipeline
@@ -43,13 +46,11 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
   ollama:
-    build:
-      context: ./ollama
-      dockerfile: Dockerfile
+    image: ollama/ollama:latest
+    volumes:
+      - ./ollama:/root/.ollama
     ports:
       - "11434:11434"
-    volumes:
-      - ./ollama_data:/root/.ollama
     deploy:
       resources:
         reservations:
@@ -57,9 +58,6 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
 
   webapp:
     build:
@@ -67,6 +65,7 @@ services:
       dockerfile: Dockerfile
     ports:
       - "8080:8080"
+    user: "1000:1000"
     volumes:
       - ./src/ollama/talk-to-the-city-reports/scatter/pipeline/inputs:/app/inputs
       - ./src/ollama/talk-to-the-city-reports/scatter/pipeline/outputs:/app/outputs
