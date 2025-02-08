@@ -49,9 +49,17 @@
 <body>
     <h1>Talk to the City</h1>
     <div class="upload-container">
-        <h2>CSVファイルをアップロード</h2>
+        <h2>データのアップロード</h2>
         <form id="uploadForm">
-            <input type="file" id="fileInput" accept=".csv" required>
+            <div class="form-group">
+                <label>CSVファイル:</label>
+                <input type="file" id="fileInput" accept=".csv">
+            </div>
+            <div class="form-group">
+                <label>または Google スプレッドシートURL:</label>
+                <input type="text" id="spreadsheetUrl" placeholder="https://docs.google.com/spreadsheets/d/...">
+                <small>※シートは「リンクを知っている全員が閲覧可能」に設定してください</small>
+            </div>
             <button type="submit">アップロード</button>
         </form>
         <p class="sample-link">
@@ -105,7 +113,20 @@
             const statusMessage = document.getElementById('status-message');
             const progressInfo = document.getElementById('progress-info');
             const formData = new FormData();
-            formData.append('file', document.getElementById('fileInput').files[0]);
+            const file = document.getElementById('fileInput').files[0];
+            const spreadsheetUrl = document.getElementById('spreadsheetUrl').value;
+
+            if (!file && !spreadsheetUrl) {
+                statusMessage.textContent = 'ファイルまたはスプレッドシートURLを入力してください';
+                return;
+            }
+
+            if (file) {
+                formData.append('file', file);
+            }
+            if (spreadsheetUrl) {
+                formData.append('spreadsheet_url', spreadsheetUrl);
+            }
 
             try {
                 status.className = 'status';
