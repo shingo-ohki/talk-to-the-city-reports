@@ -15,7 +15,6 @@
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             padding: 2rem;
-            margin: 2rem 0;
         }
         .section-title {
             color: #333;
@@ -31,6 +30,10 @@
             display: flex;
             flex-direction: column;
             gap: 0.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .form-group:last-child {
+            margin-bottom: 0;
         }
         .form-label {
             font-weight: 500;
@@ -105,6 +108,34 @@
         .sample-link-inline:hover {
             text-decoration: underline;
         }
+
+        .form-section {
+            padding-top: 0rem;
+            padding-bottom: 1rem;
+            padding-right: 1.5rem;
+            padding-left: 1.5rem;
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        .subsection-title {
+            font-size: 1.1rem;
+            color: #495057;
+            margin-bottom: 1rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        .btn:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+
+        .btn-primary:disabled {
+            background-color: #7faad7;
+        }
     </style>
 </head>
 <body>
@@ -116,40 +147,41 @@
     </div>
 
     <section class="upload-section">
-        <h2 class="section-title">データのアップロード</h2>
         <form id="uploadForm" class="upload-form">
-                        <div class="form-group">
-                <div class="label-with-sample">
-                    <label for="fileInput" class="form-label">CSVファイル:</label>
-                    <a href="/sample" download="sample_input.csv" class="sample-link-inline">サンプルCSVファイル</a>
+            <div class="form-section">
+                <h3 class="subsection-title">意見データ（必須）</h3>
+                <div class="form-group">
+                    <div class="label-with-sample">
+                        <label for="fileInput" class="form-label">CSVファイル:</label>
+                        <a href="/sample" download="sample_input.csv" class="sample-link-inline">サンプルCSVファイル</a>
+                    </div>
+                    <input type="file" id="fileInput" accept=".csv" class="form-input">
                 </div>
-                <input type="file" id="fileInput" accept=".csv" class="form-input">
-            </div>
-            
-                        <div class="form-group">
-                <div class="label-with-sample">
-                    <label for="spreadsheetUrl" class="form-label">または Google スプレッドシートURL:</label>
-                    <a href="https://docs.google.com/spreadsheets/d/1wMaQZjYczZuxvoGzizy4JT8zVWqGymb-uk2bENNX-cA/edit?usp=sharing" target="_blank" class="sample-link-inline">サンプルスプレッドシート</a>
+
+                <div class="form-group">
+                    <div class="label-with-sample">
+                        <label for="spreadsheetUrl" class="form-label">または Google スプレッドシートURL:</label>
+                        <a href="https://docs.google.com/spreadsheets/d/1wMaQZjYczZuxvoGzizy4JT8zVWqGymb-uk2bENNX-cA/edit?usp=sharing" target="_blank" class="sample-link-inline">サンプルスプレッドシート</a>
+                    </div>
+                    <input type="text" id="spreadsheetUrl" class="form-input" placeholder="https://docs.google.com/spreadsheets/d/...">
+                    <small class="form-hint">※シートは「リンクを知っている全員が閲覧可能」に設定してください</small>
                 </div>
-                <input type="text" id="spreadsheetUrl" class="form-input" placeholder="https://docs.google.com/spreadsheets/d/...">
-                <small class="form-hint">※シートは「リンクを知っている全員が閲覧可能」に設定してください</small>
             </div>
-            
-            <div class="form-group">
-                <div class="label-with-sample">
-                    <label for="configFile" class="form-label">設定ファイル (オプション):</label>
-                    <a href="/sample-config" download="sample_config.json" class="sample-link-inline">サンプル設定ファイル</a>
+
+            <div class="form-section">
+                <h3 class="subsection-title">設定ファイル（オプション）</h3>
+                <div class="form-group">
+                    <div class="label-with-sample">
+                        <label for="configFile" class="form-label">JSON設定ファイル:</label>
+                        <a href="/sample-config" download="sample_config.json" class="sample-link-inline">サンプル設定ファイル</a>
+                    </div>
+                    <input type="file" id="configFile" accept=".json" class="form-input">
+                    <small class="form-hint">※設定ファイルを指定しない場合はデフォルト設定を使用します</small>
                 </div>
-                <input type="file" id="configFile" accept=".json" class="form-input">
-                <small class="form-hint">※設定ファイルを指定しない場合はデフォルト設定を使用します</small>
             </div>
-            
+
             <button type="submit" class="btn btn-primary">アップロード</button>
         </form>
-        
-        <div class="sample-link">
-            <a href="/sample" download="sample_input.csv">サンプルCSVファイル</a>
-        </div>
     </section>
 
     <script>
@@ -159,6 +191,7 @@
             const status = document.getElementById('status');
             const statusMessage = document.getElementById('status-message');
             const progressInfo = document.getElementById('progress-info');
+            const submitButton = document.querySelector('button[type="submit"]');
 
             status.style.display = 'block';
 
@@ -168,13 +201,22 @@
                 statusMessage.innerHTML = `処理が完了しました<br>
                     <a href="/pipeline/outputs/${projectId}/report/">レポートを表示</a>`;
                 progressInfo.textContent = '';
+                // 処理完了時にボタンを有効化
+                submitButton.disabled = false;
+                submitButton.textContent = 'アップロード';
             } else if (data.status === 'failed') {
                 status.className = 'status error';
                 statusMessage.textContent = `エラー: ${data.error}`;
                 progressInfo.textContent = '';
+                // エラー時にボタンを有効化
+                submitButton.disabled = false;
+                submitButton.textContent = 'アップロード';
             } else {
                 status.className = 'status';
                 statusMessage.textContent = '処理中...';
+                // 処理中はボタンを無効化したまま
+                submitButton.disabled = true;
+                submitButton.textContent = '処理中...';
                 
                 if (data.current_step) {
                     let progressText = `現在の処理: ${data.current_step}`;
@@ -191,6 +233,17 @@
 
         document.getElementById('uploadForm').onsubmit = async (e) => {
             e.preventDefault();
+
+            // アップロードボタンを無効化
+            const submitButton = e.target.querySelector('button[type="submit"]');
+            submitButton.disabled = true;
+            submitButton.textContent = '処理中...';
+
+            window.scrollTo({
+                top: 0,
+                behavior: 'smooth'
+            });
+
             const status = document.getElementById('status');
             const statusMessage = document.getElementById('status-message');
             const progressInfo = document.getElementById('progress-info');
@@ -239,6 +292,9 @@
                 status.className = 'status error';
                 statusMessage.textContent = 'エラーが発生しました';
                 progressInfo.textContent = '';
+                // エラー時のみボタンを有効化
+                submitButton.disabled = false;
+                submitButton.textContent = 'アップロード';
             }
         };
     </script>
