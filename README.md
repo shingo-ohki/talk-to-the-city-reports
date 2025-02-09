@@ -1,7 +1,15 @@
 # これは何？
 Talk to the City の改良してみるリポジトリ
 
-このリポジトリの develop ブランチを https://t3c.dyndns.org にデプロイしています。
+- [改良のアイディア](https://github.com/shingo-ohki/talk-to-the-city-reports/issues)
+- [改良を試みた（ている）もの](https://github.com/shingo-ohki/talk-to-the-city-reports/pulls)
+
+試験的にこのリポジトリの develop ブランチを https://t3c.dyndns.org にデプロイ中
+
+この辺りでコミュニケーションが行われている
+- [Code for Japan のブロードリスニングのプロジェクトページ](https://code4japan-community.notion.site/b018bcee86cb4e03829cade5cb62cee6)
+  - 上記に案内のある Code for Japan の Slack の #proj-broadlistening チャンネル
+- [安野貴博さんのチームのリポジトリ](https://github.com/takahiroanno2024/anno-broadlistening)
 
 # Talk to the City
 
