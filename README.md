@@ -1,5 +1,5 @@
 # これは何？
-Talk to the City の改良してみるリポジトリ
+Talk to the City （今のところ scatter）の改良をしてみるリポジトリ
 
 - [改良のアイディア](https://github.com/shingo-ohki/talk-to-the-city-reports/issues)
 - [改良を試みた（ている）もの](https://github.com/shingo-ohki/talk-to-the-city-reports/pulls)
