@@ -33,8 +33,8 @@ def ensure_directories():
 # アプリケーション起動時にディレクトリを作成
 ensure_directories()
 
-def create_config(filename, output_dir):
-    return {
+def create_config(filename, output_dir, custom_config=None):
+    default_config = {
         "name": "Recursive Public, Agenda Setting",
         "question": "「第２章 都市づくりのテーマと⽅針」に関してどんな意見がありますか？",
         "input": filename,
@@ -54,8 +54,15 @@ def create_config(filename, output_dir):
             "model": "local:pakachan/elyza-llama3-8b:latest",
             "flags": ["JP"]
         },
-        "intro": "This AI-generated report relies on data from a Polis consultation run by the Recursive Public team."
+        "intro": "これはサンプルです。"
     }
+
+    if custom_config:
+        # 必須フィールドは必ず上書き
+        custom_config["input"] = filename
+        return custom_config
+    
+    return default_config
 
 def run_pipeline(config_path, job_id):
     try:
@@ -118,7 +125,17 @@ def upload_file():
     try:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_dir = f"project_{timestamp}"
+        custom_config = None
         
+        # 設定ファイルの処理
+        if 'config' in request.files:
+            config_file = request.files['config']
+            if config_file.filename != '' and config_file.filename.endswith('.json'):
+                try:
+                    custom_config = json.loads(config_file.read().decode('utf-8'))
+                except json.JSONDecodeError:
+                    return jsonify({'error': '設定ファイルのJSONが不正です'}), 400
+
         # スプレッドシートURLからの処理
         if request.form.get('spreadsheet_url'):
             try:
@@ -147,10 +164,10 @@ def upload_file():
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
 
         # 共通の後続処理
-        config = create_config(base_filename, output_dir)
+        config = create_config(base_filename, output_dir, custom_config)
         config_path = os.path.join(app.config['CONFIG_FOLDER'], f"{output_dir}.json")
-        with open(config_path, 'w') as f:
-            json.dump(config, f, indent=2)
+        with open(config_path, 'w', encoding='utf-8') as f:
+            json.dump(config, f, indent=2, ensure_ascii=False)
         
         job_id = f"job_{timestamp}"
         thread = threading.Thread(target=run_pipeline, args=(config_path, job_id))
@@ -214,6 +231,22 @@ def download_sample():
         as_attachment=True,
         mimetype='text/csv'
     )
+
+@app.route('/sample-config')
+def download_sample_config():
+    """サンプル設定ファイルをダウンロードするエンドポイント"""
+    sample_config = create_config("sample_input", "sample_project")
+    
+    response = jsonify(sample_config)
+    response.data = json.dumps(
+        sample_config,
+        ensure_ascii=False,  # 日本語を \u エスケープしない
+        indent=2           # インデントを2スペースに
+    ).encode('utf-8')      # UTF-8でエンコード
+    
+    response.headers['Content-Type'] = 'application/json; charset=utf-8'  # 文字コードを指定
+    response.headers['Content-Disposition'] = 'attachment; filename=sample_config.json'
+    return response
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
