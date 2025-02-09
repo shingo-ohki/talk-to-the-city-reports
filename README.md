@@ -1,3 +1,8 @@
+# これは何？
+Talk to the City の改良してみるリポジトリ
+
+このリポジトリの develop ブランチを https://t3c.dyndns.org にデプロイしています。
+
 # Talk to the City
 
 This repo is now a merged monorepo containing:
