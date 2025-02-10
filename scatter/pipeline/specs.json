@@ -18,7 +18,8 @@
     "dependencies": {
       "params": [],
       "steps": ["extraction"]
-    }
+    },
+    "use_llm": true
   },
   {
     "step": "clustering",
