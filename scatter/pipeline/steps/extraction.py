@@ -51,8 +51,7 @@ def extract_arguments(input, prompt, model, retries=3):
     else:
         llm = ChatOpenAI(model_name=model, temperature=0.0)
         response = llm(messages=messages(prompt, input)).content.strip()
-    print(f"Input: {input}")  # デバッグ用に入力を表示
-    print(f"Output: {response}")  # デバッグ用に出力を表示
+
     try:
         obj = json.loads(response)
         # LLM sometimes returns valid JSON string
