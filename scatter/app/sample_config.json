@@ -1,0 +1,22 @@
+{
+    "name": "Recursive Public, Agenda Setting",
+    "question": "「第２章 都市づくりのテーマと⽅針」に関してどんな意見がありますか？",
+    "input": "yokohama_comments",
+    "model": "local:pakachan/elyza-llama3-8b:latest",
+    "embedding": {
+      "model": "local:pakachan/elyza-llama3-8b:latest",
+      "prompt": ""
+    },
+    "extraction": {
+      "workers": 3,
+      "limit": 150
+    },
+    "clustering": {
+      "clusters": 5
+    },
+    "translation": {
+      "model": "local:pakachan/elyza-llama3-8b:latest",
+      "flags": ["JP"]
+    },
+    "intro": "This AI-generated report relies on data from a Polis consultation run by the Recursive Public team."
+  }
