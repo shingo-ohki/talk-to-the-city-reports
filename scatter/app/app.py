@@ -1,4 +1,4 @@
-from flask import Flask, request, render_template, jsonify, send_from_directory
+from flask import Flask, request, render_template, jsonify, send_from_directory, url_for
 import os
 import json
 import subprocess
@@ -10,7 +10,7 @@ from redis import Redis
 from rq import Queue
 import pandas as pd
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static')
 base_path = '/workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/pipeline'
 app.config['UPLOAD_FOLDER'] = os.path.join(base_path, 'inputs')
 app.config['OUTPUT_FOLDER'] = os.path.join(base_path, 'outputs')
