@@ -1,20 +1,29 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Talk to the City - Upload</title>
+    <title>Talk to the City 実験場</title>
     <style>
+        h1 {
+            margin:0;
+        }
         body {
             font-family: Arial, sans-serif;
             max-width: 800px;
             margin: 0 auto;
-            padding: 20px;
             background-color: #f5f5f5;
         }
         .upload-section {
             background: white;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            padding: 2rem;
+            padding-top: 1rem;
+            padding-bottom: 1rem;
+            padding-left: 2rem;
+            padding-right: 2rem;
+        }
+        .description {
+            font-size: 0.875rem;
+            margin-bottom: 0.5rem;
         }
         .section-title {
             color: #333;
@@ -139,7 +148,7 @@
     </style>
 </head>
 <body>
-    <h1>Talk to the City</h1>
+    <h1>Talk to the City 実験場</h1>
     
     <div id="status" class="status">
         <div id="status-message"></div>
@@ -147,6 +156,10 @@
     </div>
 
     <section class="upload-section">
+        <div class="description">
+            <a href="https://github.com/AIObjectives/talk-to-the-city-reports/tree/main/scatter" target="_blank"> Talk to the City (scatter)</a> を無料で気軽に試せる実験場です。<br>
+            ご自由にお使いください。<br>
+        </div>
         <form id="uploadForm" class="upload-form">
             <div class="form-section">
                 <h3 class="subsection-title">意見データ（必須）</h3>
@@ -183,7 +196,7 @@
                 </div>
             </div>
 
-            <button type="submit" class="btn btn-primary">アップロード</button>
+            <button type="submit" class="btn btn-primary" style="width: 200px; padding: 0.5rem 1rem; display: block; margin: 0 auto;">レポートを生成する</button>
         </form>
     </section>
 
