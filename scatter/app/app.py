@@ -67,8 +67,13 @@ def create_config(filename, output_dir, custom_config=None):
     }
 
     if custom_config:
-        # 必須フィールドは必ず上書き
-        custom_config["input"] = filename
+        # 必須フィールドを上書き
+        custom_config['input'] = filename
+
+        # labellingセクションの特別な処理
+        if 'labelling' in custom_config and 'prompt' in custom_config['labelling']:
+            print("Using custom labelling prompt")  # デバッグ用
+
         return custom_config
     
     return default_config
@@ -135,15 +140,18 @@ def upload_file():
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_dir = f"project_{timestamp}"
         custom_config = None
-        
-        # 設定ファイルの処理
+
+        # 設定ファイルの処理を先に行う
         if 'config' in request.files:
             config_file = request.files['config']
-            if config_file.filename != '' and config_file.filename.endswith('.json'):
+            if config_file.filename != '':
                 try:
-                    custom_config = json.loads(config_file.read().decode('utf-8'))
-                except json.JSONDecodeError:
-                    return jsonify({'error': '設定ファイルのJSONが不正です'}), 400
+                    config_data = config_file.read().decode('utf-8')
+                    if config_data.strip():
+                        custom_config = json.loads(config_data)
+                        print("Loaded custom config:", custom_config)  # デバッグ用
+                except json.JSONDecodeError as e:
+                    return jsonify({'error': f'設定ファイルのJSONが不正です: {str(e)}'}), 400
 
         # スプレッドシートURLからの処理
         if request.form.get('spreadsheet_url'):
@@ -173,7 +181,15 @@ def upload_file():
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
 
         # 共通の後続処理
-        config = create_config(base_filename, output_dir, custom_config)
+        config = create_config(
+            base_filename,
+            output_dir,
+            custom_config if custom_config else None
+        )
+
+        # デバッグ用のログ出力
+        print("Final config:", config)
+
         # 本ツールの機能要望レポートの場合は毎回同じ場所にレポートを保存（上書き）する
         if config.get('name') == '本ツールの機能要望レポート':
             output_dir = 'feature_request'

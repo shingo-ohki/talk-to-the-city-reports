@@ -189,3 +189,10 @@ body {
 .footer-right {
     text-align: right;  /* テキストも右寄せにする */
 }
+
+.prompt-textarea {
+    font-family: monospace;
+    white-space: pre;
+    min-height: 200px;
+    resize: vertical;
+}
