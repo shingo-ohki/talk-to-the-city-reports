@@ -67,14 +67,23 @@ def create_config(filename, output_dir, custom_config=None):
     }
 
     if custom_config:
-        # 必須フィールドを上書き
-        custom_config['input'] = filename
-
-        # labellingセクションの特別な処理
-        if 'labelling' in custom_config and 'prompt' in custom_config['labelling']:
-            print("Using custom labelling prompt")  # デバッグ用
-
-        return custom_config
+        # 必須フィールドを含むデフォルト設定を基準に、カスタム設定をマージ
+        merged_config = default_config.copy()
+        
+        # 再帰的にディクショナリをマージする関数
+        def deep_merge(d1, d2):
+            for k, v in d2.items():
+                if k in d1 and isinstance(d1[k], dict) and isinstance(v, dict):
+                    deep_merge(d1[k], v)
+                else:
+                    d1[k] = v
+        
+        deep_merge(merged_config, custom_config)
+        
+        # 必須フィールドの上書き
+        merged_config['input'] = filename
+        
+        return merged_config
     
     return default_config
 
@@ -139,9 +148,9 @@ def upload_file():
     try:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_dir = f"project_{timestamp}"
-        custom_config = None
+        custom_config = {}  # 空の辞書で初期化
 
-        # 設定ファイルの処理を先に行う
+        # 設定ファイルの処理
         if 'config' in request.files:
             config_file = request.files['config']
             if config_file.filename != '':
@@ -149,9 +158,17 @@ def upload_file():
                     config_data = config_file.read().decode('utf-8')
                     if config_data.strip():
                         custom_config = json.loads(config_data)
-                        print("Loaded custom config:", custom_config)  # デバッグ用
                 except json.JSONDecodeError as e:
                     return jsonify({'error': f'設定ファイルのJSONが不正です: {str(e)}'}), 400
+
+        # フォームからのプロンプト設定を追加
+        for prompt_type in ['labelling', 'takeaways', 'overview']:
+            if prompt_type not in custom_config:
+                custom_config[prompt_type] = {}
+            
+            form_key = f"{prompt_type}Prompt"
+            if form_key in request.form and request.form[form_key].strip():
+                custom_config[prompt_type]['prompt'] = request.form[form_key].strip()
 
         # スプレッドシートURLからの処理
         if request.form.get('spreadsheet_url'):
@@ -184,7 +201,7 @@ def upload_file():
         config = create_config(
             base_filename,
             output_dir,
-            custom_config if custom_config else None
+            custom_config  # custom_configがNoneの場合でもデフォルト設定が使用される
         )
 
         # デバッグ用のログ出力

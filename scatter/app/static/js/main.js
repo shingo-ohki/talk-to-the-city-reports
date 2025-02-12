@@ -41,6 +41,15 @@ async function checkStatus(jobId) {
     }
 }
 
+function toggleSection(header) {
+    const section = header.parentElement;
+    const content = section.querySelector('.section-content');
+    const icon = header.querySelector('.toggle-icon');
+    
+    content.classList.toggle('collapsed');
+    header.classList.toggle('active');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // デフォルトのプロンプトを取得
     fetch('/sample-config')
@@ -57,6 +66,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('overviewPrompt').value = config.overview.prompt;
             }
         });
+
+    // オプションセクションを初期状態で折りたたむ
+    document.querySelectorAll('.collapsible .section-content').forEach(content => {
+        content.classList.add('collapsed');
+    });
 
     document.getElementById('uploadForm').onsubmit = async (e) => {
         e.preventDefault();
