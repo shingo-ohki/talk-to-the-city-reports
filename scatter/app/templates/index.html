@@ -41,15 +41,44 @@
                 </div>
             </div>
 
-            <div class="form-section">
-                <h3 class="subsection-title">設定ファイル（オプション）</h3>
-                <div class="form-group">
-                    <div class="label-with-sample">
-                        <label for="configFile" class="form-label">JSON設定ファイル:</label>
-                        <a href="/sample-config" download="sample_config.json" class="sample-link-inline">サンプル設定ファイル</a>
+            <div class="form-section collapsible">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <h3 class="subsection-title">設定ファイル（オプション）</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="section-content collapsed">
+                    <div class="form-group">
+                        <div class="label-with-sample">
+                            <label for="configFile" class="form-label">JSON設定ファイル:</label>
+                            <a href="/sample-config" download="sample_config.json" class="sample-link-inline">サンプル設定ファイル</a>
+                        </div>
+                        <input type="file" id="configFile" accept=".json" class="form-input">
+                        <small class="form-hint">※設定ファイルを指定しない場合はデフォルト設定を使用します</small>
                     </div>
-                    <input type="file" id="configFile" accept=".json" class="form-input">
-                    <small class="form-hint">※設定ファイルを指定しない場合はデフォルト設定を使用します</small>
+                </div>
+            </div>
+
+            <div class="form-section collapsible">
+                <div class="section-header" onclick="toggleSection(this)">
+                    <h3 class="subsection-title">プロンプト設定（オプション）</h3>
+                    <span class="toggle-icon">▼</span>
+                </div>
+                <div class="section-content collapsed">
+                    <div class="form-group">
+                        <label for="labellingPrompt" class="form-label">ラベリング(labelling)処理用プロンプト:</label>
+                        <textarea id="labellingPrompt" class="form-input prompt-textarea" rows="10"></textarea>
+                        <small class="form-hint">※プロンプトの形式: /system, /human, /ai で始まる行で区切ってメッセージを記述</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="takeawaysPrompt" class="form-label">まとめ(takeaways)処理用プロンプト:</label>
+                        <textarea id="takeawaysPrompt" class="form-input prompt-textarea" rows="10"></textarea>
+                        <small class="form-hint">※プロンプトの形式: /system, /human, /ai で始まる行で区切ってメッセージを記述</small>
+                    </div>
+                    <div class="form-group">
+                        <label for="overviewPrompt" class="form-label">概要(overview)処理用プロンプト:</label>
+                        <textarea id="overviewPrompt" class="form-input prompt-textarea" rows="10"></textarea>
+                        <small class="form-hint">※プロンプトの形式: /system, /human, /ai で始まる行で区切ってメッセージを記述</small>
+                    </div>
                 </div>
             </div>
 

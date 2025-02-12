@@ -67,9 +67,23 @@ def create_config(filename, output_dir, custom_config=None):
     }
 
     if custom_config:
-        # 必須フィールドは必ず上書き
-        custom_config["input"] = filename
-        return custom_config
+        # 必須フィールドを含むデフォルト設定を基準に、カスタム設定をマージ
+        merged_config = default_config.copy()
+        
+        # 再帰的にディクショナリをマージする関数
+        def deep_merge(d1, d2):
+            for k, v in d2.items():
+                if k in d1 and isinstance(d1[k], dict) and isinstance(v, dict):
+                    deep_merge(d1[k], v)
+                else:
+                    d1[k] = v
+        
+        deep_merge(merged_config, custom_config)
+        
+        # 必須フィールドの上書き
+        merged_config['input'] = filename
+        
+        return merged_config
     
     return default_config
 
@@ -134,16 +148,27 @@ def upload_file():
     try:
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_dir = f"project_{timestamp}"
-        custom_config = None
-        
+        custom_config = {}  # 空の辞書で初期化
+
         # 設定ファイルの処理
         if 'config' in request.files:
             config_file = request.files['config']
-            if config_file.filename != '' and config_file.filename.endswith('.json'):
+            if config_file.filename != '':
                 try:
-                    custom_config = json.loads(config_file.read().decode('utf-8'))
-                except json.JSONDecodeError:
-                    return jsonify({'error': '設定ファイルのJSONが不正です'}), 400
+                    config_data = config_file.read().decode('utf-8')
+                    if config_data.strip():
+                        custom_config = json.loads(config_data)
+                except json.JSONDecodeError as e:
+                    return jsonify({'error': f'設定ファイルのJSONが不正です: {str(e)}'}), 400
+
+        # フォームからのプロンプト設定を追加
+        for prompt_type in ['labelling', 'takeaways', 'overview']:
+            if prompt_type not in custom_config:
+                custom_config[prompt_type] = {}
+            
+            form_key = f"{prompt_type}Prompt"
+            if form_key in request.form and request.form[form_key].strip():
+                custom_config[prompt_type]['prompt'] = request.form[form_key].strip()
 
         # スプレッドシートURLからの処理
         if request.form.get('spreadsheet_url'):
@@ -173,7 +198,15 @@ def upload_file():
             file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
 
         # 共通の後続処理
-        config = create_config(base_filename, output_dir, custom_config)
+        config = create_config(
+            base_filename,
+            output_dir,
+            custom_config  # custom_configがNoneの場合でもデフォルト設定が使用される
+        )
+
+        # デバッグ用のログ出力
+        print("Final config:", config)
+
         # 本ツールの機能要望レポートの場合は毎回同じ場所にレポートを保存（上書き）する
         if config.get('name') == '本ツールの機能要望レポート':
             output_dir = 'feature_request'

@@ -15,13 +15,13 @@ async function checkStatus(jobId) {
             <a href="/pipeline/outputs/${projectId}/report/">レポートを表示</a>`;
         progressInfo.textContent = '';
         submitButton.disabled = false;
-        submitButton.textContent = 'アップロード';
+        submitButton.textContent = 'レポートを生成する';
     } else if (data.status === 'failed') {
         status.className = 'status error';
         statusMessage.textContent = `エラー: ${data.error}`;
         progressInfo.textContent = '';
         submitButton.disabled = false;
-        submitButton.textContent = 'アップロード';
+        submitButton.textContent = 'レポートを生成する';
     } else {
         status.className = 'status';
         statusMessage.textContent = '処理中...';
@@ -41,7 +41,37 @@ async function checkStatus(jobId) {
     }
 }
 
+function toggleSection(header) {
+    const section = header.parentElement;
+    const content = section.querySelector('.section-content');
+    const icon = header.querySelector('.toggle-icon');
+    
+    content.classList.toggle('collapsed');
+    header.classList.toggle('active');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
+    // デフォルトのプロンプトを取得
+    fetch('/sample-config')
+        .then(r => r.json())
+        .then(config => {
+            // 各プロンプトのデフォルト値を設定
+            if (config.labelling && config.labelling.prompt) {
+                document.getElementById('labellingPrompt').value = config.labelling.prompt;
+            }
+            if (config.takeaways && config.takeaways.prompt) {
+                document.getElementById('takeawaysPrompt').value = config.takeaways.prompt;
+            }
+            if (config.overview && config.overview.prompt) {
+                document.getElementById('overviewPrompt').value = config.overview.prompt;
+            }
+        });
+
+    // オプションセクションを初期状態で折りたたむ
+    document.querySelectorAll('.collapsible .section-content').forEach(content => {
+        content.classList.add('collapsed');
+    });
+
     document.getElementById('uploadForm').onsubmit = async (e) => {
         e.preventDefault();
 
@@ -61,24 +91,66 @@ document.addEventListener('DOMContentLoaded', () => {
         const file = document.getElementById('fileInput').files[0];
         const spreadsheetUrl = document.getElementById('spreadsheetUrl').value;
         const configFile = document.getElementById('configFile').files[0];
+        const labellingPrompt = document.getElementById('labellingPrompt').value;
 
         if (!file && !spreadsheetUrl) {
-            status.className = 'status error';
-            status.style.display = 'block';
-            statusMessage.textContent = 'ファイルまたはスプレッドシートURLを入力してください';
+            showError('ファイルまたはスプレッドシートURLを入力してください');
             return;
         }
 
+        // カスタム設定の構築
+        let config = {};
+
+        // 既存の設定ファイルの読み込み
+        if (configFile) {
+            const configText = await configFile.text();
+            config = JSON.parse(configText);
+        }
+
+        // 各プロンプトの追加（値が存在する場合のみ）
+        const takeawaysPrompt = document.getElementById('takeawaysPrompt').value;
+        const overviewPrompt = document.getElementById('overviewPrompt').value;
+
+        if (labellingPrompt && labellingPrompt.trim()) {
+            config = {
+                ...config,
+                labelling: {
+                    ...config.labelling,
+                    prompt: labellingPrompt.trim()
+                }
+            };
+        }
+
+        if (takeawaysPrompt && takeawaysPrompt.trim()) {
+            config = {
+                ...config,
+                takeaways: {
+                    ...config.takeaways,
+                    prompt: takeawaysPrompt.trim()
+                }
+            };
+        }
+
+        if (overviewPrompt && overviewPrompt.trim()) {
+            config = {
+                ...config,
+                overview: {
+                    ...config.overview,
+                    prompt: overviewPrompt.trim()
+                }
+            };
+        }
+
+        // ファイルとURLの追加
         if (file) formData.append('file', file);
         if (spreadsheetUrl) formData.append('spreadsheet_url', spreadsheetUrl);
-        if (configFile) formData.append('config', configFile);
+
+        // 設定をJSONとして追加（必ず実行）
+        formData.append('config', new Blob([JSON.stringify(config)], {
+            type: 'application/json'
+        }));
 
         try {
-            status.className = 'status';
-            statusMessage.textContent = '処理中...';
-            progressInfo.textContent = '';
-            status.style.display = 'block';
-
             const response = await fetch('/upload', {
                 method: 'POST',
                 body: formData
@@ -93,11 +165,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 progressInfo.textContent = '';
             }
         } catch (error) {
-            status.className = 'status error';
-            statusMessage.textContent = 'エラーが発生しました';
-            progressInfo.textContent = '';
-            submitButton.disabled = false;
-            submitButton.textContent = 'アップロード';
+            showError('エラーが発生しました: ' + error);
         }
     };
 });

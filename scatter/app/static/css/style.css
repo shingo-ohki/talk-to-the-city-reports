@@ -189,3 +189,40 @@ body {
 .footer-right {
     text-align: right;  /* テキストも右寄せにする */
 }
+
+.prompt-textarea {
+    font-family: monospace;
+    white-space: pre;
+    min-height: 200px;
+    resize: vertical;
+}
+
+.section-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    cursor: pointer;
+    padding: 0.5rem 0;
+}
+
+.toggle-icon {
+    transition: transform 0.3s ease;
+}
+
+.section-content {
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+    max-height: 1000px;
+}
+
+.section-content.collapsed {
+    max-height: 0;
+}
+
+.collapsible .section-header:hover {
+    background-color: #f0f0f0;
+}
+
+.collapsible .section-header.active .toggle-icon {
+    transform: rotate(180deg);
+}
