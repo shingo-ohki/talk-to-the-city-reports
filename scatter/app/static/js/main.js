@@ -46,8 +46,15 @@ document.addEventListener('DOMContentLoaded', () => {
     fetch('/sample-config')
         .then(r => r.json())
         .then(config => {
+            // 各プロンプトのデフォルト値を設定
             if (config.labelling && config.labelling.prompt) {
                 document.getElementById('labellingPrompt').value = config.labelling.prompt;
+            }
+            if (config.takeaways && config.takeaways.prompt) {
+                document.getElementById('takeawaysPrompt').value = config.takeaways.prompt;
+            }
+            if (config.overview && config.overview.prompt) {
+                document.getElementById('overviewPrompt').value = config.overview.prompt;
             }
         });
 
@@ -86,13 +93,36 @@ document.addEventListener('DOMContentLoaded', () => {
             config = JSON.parse(configText);
         }
 
-        // ラベリングプロンプトの追加（値が存在する場合のみ）
+        // 各プロンプトの追加（値が存在する場合のみ）
+        const takeawaysPrompt = document.getElementById('takeawaysPrompt').value;
+        const overviewPrompt = document.getElementById('overviewPrompt').value;
+
         if (labellingPrompt && labellingPrompt.trim()) {
             config = {
                 ...config,
                 labelling: {
                     ...config.labelling,
                     prompt: labellingPrompt.trim()
+                }
+            };
+        }
+
+        if (takeawaysPrompt && takeawaysPrompt.trim()) {
+            config = {
+                ...config,
+                takeaways: {
+                    ...config.takeaways,
+                    prompt: takeawaysPrompt.trim()
+                }
+            };
+        }
+
+        if (overviewPrompt && overviewPrompt.trim()) {
+            config = {
+                ...config,
+                overview: {
+                    ...config.overview,
+                    prompt: overviewPrompt.trim()
                 }
             };
         }
