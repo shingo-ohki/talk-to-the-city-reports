@@ -174,6 +174,10 @@ def upload_file():
 
         # 共通の後続処理
         config = create_config(base_filename, output_dir, custom_config)
+        # 本ツールの機能要望レポートの場合は毎回同じ場所にレポートを保存（上書き）する
+        if config.get('name') == '本ツールの機能要望レポート':
+            output_dir = 'feature_request'
+
         config_path = os.path.join(app.config['CONFIG_FOLDER'], f"{output_dir}.json")
         with open(config_path, 'w', encoding='utf-8') as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
