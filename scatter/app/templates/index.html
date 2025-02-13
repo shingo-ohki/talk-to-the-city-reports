@@ -65,23 +65,47 @@
                 </div>
                 <div class="section-content collapsed">
                     <div class="form-group">
-                        <label for="extractionPrompt" class="form-label">抽出(extraction)処理用プロンプト:</label>
-                        <textarea id="extractionPrompt" class="form-input prompt-textarea" rows="15"></textarea>
+                        <div class="label-with-copy">
+                            <label for="extractionPrompt" class="form-label">抽出(extraction)処理用プロンプト:</label>
+                            <button type="button" class="copy-button" data-target="extractionPrompt">
+                                <span class="copy-icon">📋</span>
+                                <span class="copy-tooltip">デフォルト値をコピー</span>
+                            </button>
+                        </div>
+                        <textarea id="extractionPrompt" class="form-input prompt-textarea" rows="15" placeholder=""></textarea>
                         <small class="form-hint">※プロンプトの形式: /system, /human, /ai で始まる行で区切ってメッセージを記述</small>
                     </div>
                     <div class="form-group">
-                        <label for="labellingPrompt" class="form-label">ラベリング(labelling)処理用プロンプト:</label>
-                        <textarea id="labellingPrompt" class="form-input prompt-textarea" rows="15"></textarea>
+                        <div class="label-with-copy">
+                            <label for="labellingPrompt" class="form-label">ラベリング(labelling)処理用プロンプト:</label>
+                            <button type="button" class="copy-button" data-target="labellingPrompt">
+                                <span class="copy-icon">📋</span>
+                                <span class="copy-tooltip">デフォルト値をコピー</span>
+                            </button>
+                        </div>
+                        <textarea id="labellingPrompt" class="form-input prompt-textarea" rows="15" placeholder=""></textarea>
                         <small class="form-hint">※プロンプトの形式: /system, /human, /ai で始まる行で区切ってメッセージを記述</small>
                     </div>
                     <div class="form-group">
-                        <label for="takeawaysPrompt" class="form-label">まとめ(takeaways)処理用プロンプト:</label>
-                        <textarea id="takeawaysPrompt" class="form-input prompt-textarea" rows="15"></textarea>
+                        <div class="label-with-copy">
+                            <label for="takeawaysPrompt" class="form-label">まとめ(takeaways)処理用プロンプト:</label>
+                            <button type="button" class="copy-button" data-target="takeawaysPrompt">
+                                <span class="copy-icon">📋</span>
+                                <span class="copy-tooltip">デフォルト値をコピー</span>
+                            </button>
+                        </div>
+                        <textarea id="takeawaysPrompt" class="form-input prompt-textarea" rows="15" placeholder=""></textarea>
                         <small class="form-hint">※プロンプトの形式: /system, /human, /ai で始まる行で区切ってメッセージを記述</small>
                     </div>
                     <div class="form-group">
-                        <label for="overviewPrompt" class="form-label">概要(overview)処理用プロンプト:</label>
-                        <textarea id="overviewPrompt" class="form-input prompt-textarea" rows="15"></textarea>
+                        <div class="label-with-copy">
+                            <label for="overviewPrompt" class="form-label">概要(overview)処理用プロンプト:</label>
+                            <button type="button" class="copy-button" data-target="overviewPrompt">
+                                <span class="copy-icon">📋</span>
+                                <span class="copy-tooltip">デフォルト値をコピー</span>
+                            </button>
+                        </div>
+                        <textarea id="overviewPrompt" class="form-input prompt-textarea" rows="15" placeholder=""></textarea>
                         <small class="form-hint">※プロンプトの形式: /system, /human, /ai で始まる行で区切ってメッセージを記述</small>
                     </div>
                 </div>

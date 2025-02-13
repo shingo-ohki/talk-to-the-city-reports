@@ -55,18 +55,18 @@ document.addEventListener('DOMContentLoaded', () => {
     fetch('/sample-config')
         .then(r => r.json())
         .then(config => {
-            // 各プロンプトのデフォルト値を設定
+            // 各プロンプトのデフォルト値を placeholder に設定
+            if (config.extraction && config.extraction.prompt) {
+                document.getElementById('extractionPrompt').placeholder = config.extraction.prompt;
+            }
             if (config.labelling && config.labelling.prompt) {
-                document.getElementById('labellingPrompt').value = config.labelling.prompt;
+                document.getElementById('labellingPrompt').placeholder = config.labelling.prompt;
             }
             if (config.takeaways && config.takeaways.prompt) {
-                document.getElementById('takeawaysPrompt').value = config.takeaways.prompt;
+                document.getElementById('takeawaysPrompt').placeholder = config.takeaways.prompt;
             }
             if (config.overview && config.overview.prompt) {
-                document.getElementById('overviewPrompt').value = config.overview.prompt;
-            }
-            if (config.extraction && config.extraction.prompt) {
-                document.getElementById('extractionPrompt').value = config.extraction.prompt;
+                document.getElementById('overviewPrompt').placeholder = config.overview.prompt;
             }
         });
 
@@ -171,4 +171,28 @@ document.addEventListener('DOMContentLoaded', () => {
             showError('エラーが発生しました: ' + error);
         }
     };
+
+    // コピーボタンの機能を追加
+    document.querySelectorAll('.copy-button').forEach(button => {
+        button.addEventListener('click', async () => {
+            const targetId = button.getAttribute('data-target');
+            const textarea = document.getElementById(targetId);
+            const placeholder = textarea.placeholder;
+            
+            try {
+                await navigator.clipboard.writeText(placeholder);
+                
+                // コピー成功時のフィードバック
+                const tooltip = button.querySelector('.copy-tooltip');
+                const originalText = tooltip.textContent;
+                tooltip.textContent = 'コピーしました！';
+                
+                setTimeout(() => {
+                    tooltip.textContent = originalText;
+                }, 2000);
+            } catch (err) {
+                console.error('クリップボードへのコピーに失敗しました:', err);
+            }
+        });
+    });
 });
