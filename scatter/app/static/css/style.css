@@ -228,14 +228,16 @@ body {
 
 .section-content {
     overflow: hidden;
-    transition: max-height 0.3s ease-out;
-    max-height: 2000px;
+    transition: all 0.3s ease-out;
+    height: auto;
+    opacity: 1;
 }
 
 .section-content.collapsed {
-    max-height: 0;
+    height: 0;
     padding: 0;
     margin: 0;
+    opacity: 0;
     overflow: hidden;
 }
 
