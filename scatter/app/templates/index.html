@@ -65,18 +65,23 @@
                 </div>
                 <div class="section-content collapsed">
                     <div class="form-group">
+                        <label for="extractionPrompt" class="form-label">抽出(extraction)処理用プロンプト:</label>
+                        <textarea id="extractionPrompt" class="form-input prompt-textarea" rows="15"></textarea>
+                        <small class="form-hint">※プロンプトの形式: /system, /human, /ai で始まる行で区切ってメッセージを記述</small>
+                    </div>
+                    <div class="form-group">
                         <label for="labellingPrompt" class="form-label">ラベリング(labelling)処理用プロンプト:</label>
-                        <textarea id="labellingPrompt" class="form-input prompt-textarea" rows="10"></textarea>
+                        <textarea id="labellingPrompt" class="form-input prompt-textarea" rows="15"></textarea>
                         <small class="form-hint">※プロンプトの形式: /system, /human, /ai で始まる行で区切ってメッセージを記述</small>
                     </div>
                     <div class="form-group">
                         <label for="takeawaysPrompt" class="form-label">まとめ(takeaways)処理用プロンプト:</label>
-                        <textarea id="takeawaysPrompt" class="form-input prompt-textarea" rows="10"></textarea>
+                        <textarea id="takeawaysPrompt" class="form-input prompt-textarea" rows="15"></textarea>
                         <small class="form-hint">※プロンプトの形式: /system, /human, /ai で始まる行で区切ってメッセージを記述</small>
                     </div>
                     <div class="form-group">
                         <label for="overviewPrompt" class="form-label">概要(overview)処理用プロンプト:</label>
-                        <textarea id="overviewPrompt" class="form-input prompt-textarea" rows="10"></textarea>
+                        <textarea id="overviewPrompt" class="form-input prompt-textarea" rows="15"></textarea>
                         <small class="form-hint">※プロンプトの形式: /system, /human, /ai で始まる行で区切ってメッセージを記述</small>
                     </div>
                 </div>

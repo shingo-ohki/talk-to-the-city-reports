@@ -45,7 +45,8 @@ def create_config(filename, output_dir, custom_config=None):
         },
         "extraction": {
             "workers": 3,
-            "limit": 150
+            "limit": 150,
+            "prompt": "/system\n\n与えられた投稿を要約し、JSONリストとして返してください。\n追加の説明は含めず、必ずJSONリストのみを返してください。\n予め提供された例や過去の回答を含めないでください。\n投稿内容を要約することができない旨の出力だった場合は、要約せずに与えられた投稿JSONリストとして出力してください\n\n例:\n[\"要約された意見\"]\n\n注意:\n- JSONリストのみを出力\n- システムメッセージや注釈を含めない\n- 過去の例を含めない"
         },
         "clustering": {
             "clusters": 5
@@ -162,7 +163,7 @@ def upload_file():
                     return jsonify({'error': f'設定ファイルのJSONが不正です: {str(e)}'}), 400
 
         # フォームからのプロンプト設定を追加
-        for prompt_type in ['labelling', 'takeaways', 'overview']:
+        for prompt_type in ['extraction', 'labelling', 'takeaways', 'overview']:
             if prompt_type not in custom_config:
                 custom_config[prompt_type] = {}
             

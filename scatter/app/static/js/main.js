@@ -65,6 +65,9 @@ document.addEventListener('DOMContentLoaded', () => {
             if (config.overview && config.overview.prompt) {
                 document.getElementById('overviewPrompt').value = config.overview.prompt;
             }
+            if (config.extraction && config.extraction.prompt) {
+                document.getElementById('extractionPrompt').value = config.extraction.prompt;
+            }
         });
 
     // オプションセクションを初期状態で折りたたむ
