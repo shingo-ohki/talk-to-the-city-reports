@@ -39,12 +39,30 @@ async function checkStatus(jobId) {
         
         if (data.current_step) {
             progressStep.textContent = `処理中: ${data.current_step}`;
-            if (data.progress && data.progress.total > 0) {
-                const percent = Math.round((data.progress.current / data.progress.total) * 100);
+            if (data.progress) {
+                const percent = data.progress.current;
                 progressBar.style.width = `${percent}%`;
                 progressPercentage.textContent = `${percent}%`;
-                progressInfo.textContent = `${data.progress.current}/${data.progress.total}`;
+                
+                // 進捗の詳細表示を更新
+                const noProgressSteps = ['embedding', 'clustering', 'translation', 'aggregation', 'visualization'];
+                
+                if (!noProgressSteps.includes(data.current_step) && 
+                    data.progress.step_progress !== undefined && 
+                    data.progress.step_total !== undefined) {
+                    // 詳細な進捗を表示するステップの場合
+                    progressInfo.textContent = `${data.current_step}: ${data.progress.step_progress}/${data.progress.step_total}`;
+                } else {
+                    // 進捗を表示しないステップの場合は現在のステップ名のみ表示
+                    progressInfo.textContent = `${data.current_step}`;
+                }
+            } else {
+                // progressが未定義の場合はステップ名のみ表示
+                progressInfo.textContent = data.current_step;
             }
+        } else {
+            // current_stepが未定義の場合は進捗情報をクリア
+            progressInfo.textContent = '';
         }
         
         setTimeout(() => checkStatus(jobId), 2000);
