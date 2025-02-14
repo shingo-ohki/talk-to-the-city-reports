@@ -236,80 +236,102 @@ PIPELINE_STEPS = [
 
 @app.route('/status/<job_id>')
 def job_status(job_id):
-    if job_id not in app.config['JOBS']:
-        return jsonify({'error': 'ジョブが見つかりません'}), 404
-    
-    job = app.config['JOBS'][job_id]
-    if 'rq_job_id' in job:
-        rq_job = q.fetch_job(job['rq_job_id'])
-        if rq_job is None:
-            job['status'] = 'failed'
-            job['error'] = 'ジョブが見つかりません'
-        elif rq_job.is_finished:
-            job['status'] = 'completed'
-        elif rq_job.is_failed:
-            job['status'] = 'failed'
-            job['error'] = str(rq_job.exc_info)
-        else:
-            job['status'] = 'running'
-            try:
-                with open(f"{app.config['OUTPUT_FOLDER']}/{job_id.replace('job_', 'project_')}/status.json") as f:
-                    pipeline_status = json.load(f)
-                    current_step = pipeline_status.get('current_job', '')
-                    last_completed_step = pipeline_status.get('last_completed_job', '')
+    try:
+        if job_id not in app.config['JOBS']:
+            return jsonify({'error': 'ジョブが見つかりません'}), 404
+        
+        job = app.config['JOBS'][job_id]
+        if 'rq_job_id' in job:
+            rq_job = q.fetch_job(job['rq_job_id'])
+            if rq_job is None:
+                job['status'] = 'failed'
+                job['error'] = 'ジョブが見つかりません'
+            elif rq_job.is_finished:
+                job['status'] = 'completed'
+            elif rq_job.is_failed:
+                job['status'] = 'failed'
+                job['error'] = str(rq_job.exc_info)
+            else:
+                job['status'] = 'running'
+                try:
+                    status_file = f"{app.config['OUTPUT_FOLDER']}/{job_id.replace('job_', 'project_')}/status.json"
+                    if not os.path.exists(status_file):
+                        return jsonify({
+                            'status': 'running',
+                            'current_step': 'initialization',
+                            'progress': {'current': 0, 'total': 100}
+                        })
                     
-                    # 進捗を表示しないステップのリスト
-                    NO_PROGRESS_STEPS = ['embedding', 'clustering', 'translation', 'aggregation', 'visualization']
-                    
-                    try:
-                        current_step_index = PIPELINE_STEPS.index(current_step)
-                        last_completed_index = PIPELINE_STEPS.index(last_completed_step) if last_completed_step else max(0, current_step_index - 1)
-                    except ValueError:
-                        current_step_index = 0
-                        last_completed_index = 0
-                    
-                    # 全体の進捗を計算
-                    base_percentage = (last_completed_index * 100) / len(PIPELINE_STEPS)  # 完了したステップの進捗
-                    
-                    # 現在のステップの進捗を計算
-                    if current_step in NO_PROGRESS_STEPS:
-                        # 進捗表示しないステップは一定の進捗率を表示
-                        step_percentage = 0.5  # 50%で固定
-                        current_percentage = (step_percentage * 100) / len(PIPELINE_STEPS)
+                    with open(status_file) as f:
+                        pipeline_status = json.load(f)
+                        current_step = pipeline_status.get('current_job', '')
+                        last_completed_step = pipeline_status.get('last_completed_job', '')
+                        last_progress = job.get('progress', {}).get('current', 0)
+                        
+                        # ステップの状態を保存
+                        job['current_step'] = current_step
+                        job['last_completed_step'] = last_completed_step
+                        
+                        try:
+                            current_step_index = PIPELINE_STEPS.index(current_step)
+                            last_completed_index = PIPELINE_STEPS.index(last_completed_step) if last_completed_step else max(0, current_step_index - 1)
+                        except ValueError:
+                            current_step_index = 0
+                            last_completed_index = 0
+                        
+                        # 完了したステップの進捗を計算
+                        base_percentage = (last_completed_index * 100) / len(PIPELINE_STEPS)
+                        
+                        # 現在のステップの進捗を計算
+                        if current_step in ['embedding', 'clustering', 'translation', 'aggregation', 'visualization']:
+                            step_percentage = 0.5
+                            current_percentage = (step_percentage * 100) / len(PIPELINE_STEPS)
+                        else:
+                            step_progress = pipeline_status.get('current_job_progress', 0)
+                            step_total = pipeline_status.get('current_job_tasks', 0)
+                            
+                            if step_total > 0:
+                                step_percentage = min(step_progress / step_total, 1.0)
+                                current_percentage = (step_percentage * 100) / len(PIPELINE_STEPS)
+                            else:
+                                current_percentage = 0
+                        
+                        # 全体の進捗率を計算
+                        total_percentage = max(
+                            int(base_percentage + current_percentage),
+                            last_progress
+                        )
+                        
+                        # 進捗情報を更新
                         job['progress'] = {
-                            'current': int(base_percentage + current_percentage),
+                            'current': total_percentage,
                             'total': 100
                         }
-                    else:
-                        # 進捗表示するステップは実際の進捗を計算
-                        step_progress = pipeline_status.get('current_job_progress', 0)
-                        step_total = pipeline_status.get('current_job_tasks', None)
                         
-                        if step_total is not None and step_total > 0:
-                            # 総処理数が判明している場合
-                            step_percentage = min(step_progress / step_total, 1.0)
-                            current_percentage = (step_percentage * 100) / len(PIPELINE_STEPS)
-                            job['progress'] = {
-                                'current': int(base_percentage + current_percentage),
-                                'total': 100,
-                                'step_progress': step_progress,
-                                'step_total': step_total
-                            }
-                        else:
-                            # 総処理数が未定または0の場合
-                            job['progress'] = {
-                                'current': int(base_percentage),
-                                'total': 100
-                            }
+                        # 進捗の詳細情報を追加（進捗表示するステップの場合のみ）
+                        if current_step and current_step not in ['embedding', 'clustering', 'translation', 'aggregation', 'visualization']:
+                            if step_total > 0:
+                                job['progress'].update({
+                                    'step_progress': step_progress,
+                                    'step_total': step_total
+                                })
                         
-                    job['current_step'] = current_step
-                    
-            except Exception as e:
-                print(f"Status file error: {str(e)}")
-                if 'progress' not in job:
-                    job['progress'] = {'current': 0, 'total': 100}
-    
-    return jsonify(job)
+                except Exception as e:
+                    print(f"Status file error: {str(e)}")
+                    return jsonify({
+                        'status': 'running',
+                        'current_step': 'initialization',
+                        'progress': {'current': 0, 'total': 100}
+                    })
+        
+        return jsonify(job)
+        
+    except Exception as e:
+        print(f"Job status error: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'error': 'ステータスの取得に失敗しました'
+        }), 500
 
 @app.route('/report/<path:path>')
 def serve_static_report(path):
