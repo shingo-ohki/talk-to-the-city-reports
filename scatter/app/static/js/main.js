@@ -3,6 +3,9 @@ async function checkStatus(jobId) {
     const data = await response.json();
     const status = document.getElementById('status');
     const statusMessage = document.getElementById('status-message');
+    const progressBar = document.getElementById('progress-bar');
+    const progressStep = document.getElementById('progress-step');
+    const progressPercentage = document.getElementById('progress-percentage');
     const progressInfo = document.getElementById('progress-info');
     const submitButton = document.querySelector('button[type="submit"]');
 
@@ -13,12 +16,18 @@ async function checkStatus(jobId) {
         status.className = 'status success';
         statusMessage.innerHTML = `処理が完了しました<br>
             <a href="/pipeline/outputs/${projectId}/report/">レポートを表示</a>`;
+        progressBar.style.width = '100%';
+        progressStep.textContent = '完了';
+        progressPercentage.textContent = '100%';
         progressInfo.textContent = '';
         submitButton.disabled = false;
         submitButton.textContent = 'レポートを生成する';
     } else if (data.status === 'failed') {
         status.className = 'status error';
         statusMessage.textContent = `エラー: ${data.error}`;
+        progressBar.style.width = '0%';
+        progressStep.textContent = 'エラー';
+        progressPercentage.textContent = '';
         progressInfo.textContent = '';
         submitButton.disabled = false;
         submitButton.textContent = 'レポートを生成する';
@@ -29,12 +38,13 @@ async function checkStatus(jobId) {
         submitButton.textContent = '処理中...';
         
         if (data.current_step) {
-            let progressText = `現在の処理: ${data.current_step}`;
+            progressStep.textContent = `処理中: ${data.current_step}`;
             if (data.progress && data.progress.total > 0) {
                 const percent = Math.round((data.progress.current / data.progress.total) * 100);
-                progressText += ` (${percent}% 完了)`;
+                progressBar.style.width = `${percent}%`;
+                progressPercentage.textContent = `${percent}%`;
+                progressInfo.textContent = `${data.progress.current}/${data.progress.total}`;
             }
-            progressInfo.textContent = progressText;
         }
         
         setTimeout(() => checkStatus(jobId), 2000);

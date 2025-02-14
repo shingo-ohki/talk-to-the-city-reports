@@ -296,3 +296,25 @@ collapsible .section-header.active .toggle-icon {
     transition: opacity 0.3s;
     white-space: nowrap;
 }
+
+.progress-container {
+    margin-top: 0.5rem;
+    background-color: #eee;
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.progress-bar {
+    width: 0%;
+    height: 8px;
+    background-color: #0066cc;
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    display: flex;
+    justify-content: space-between;
+    color: #666;
+    font-size: 0.875rem;
+    margin-bottom: 0.25rem;
+}
