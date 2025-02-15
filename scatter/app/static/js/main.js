@@ -3,7 +3,9 @@ async function checkStatus(jobId) {
     const data = await response.json();
     const status = document.getElementById('status');
     const statusMessage = document.getElementById('status-message');
-    const progressInfo = document.getElementById('progress-info');
+    const progressBar = document.getElementById('progress-bar');
+    const progressStep = document.getElementById('progress-step');
+    const progressPercentage = document.getElementById('progress-percentage');
     const submitButton = document.querySelector('button[type="submit"]');
 
     status.style.display = 'block';
@@ -11,30 +13,48 @@ async function checkStatus(jobId) {
     if (data.status === 'completed') {
         const projectId = jobId.replace('job_', 'project_');
         status.className = 'status success';
-        statusMessage.innerHTML = `処理が完了しました<br>
-            <a href="/pipeline/outputs/${projectId}/report/">レポートを表示</a>`;
-        progressInfo.textContent = '';
+        statusMessage.style.display = 'block';
+        statusMessage.innerHTML = `処理が完了しました - <a href="/pipeline/outputs/${projectId}/report/">レポートを表示</a>`;
+        progressBar.style.width = '100%';
+        progressStep.textContent = '完了';
+        progressPercentage.textContent = '100%';
         submitButton.disabled = false;
         submitButton.textContent = 'レポートを生成する';
     } else if (data.status === 'failed') {
         status.className = 'status error';
+        statusMessage.style.display = 'block';
         statusMessage.textContent = `エラー: ${data.error}`;
-        progressInfo.textContent = '';
+        progressBar.style.width = '0%';
+        progressStep.textContent = 'エラー';
+        progressPercentage.textContent = '';
         submitButton.disabled = false;
         submitButton.textContent = 'レポートを生成する';
-    } else {
+    } else if (data.status === 'queued' || 
+              (data.current_step === 'initialization' && (!data.progress || data.progress.current === 0))) {
+        // 処理待ち状態の表示
         status.className = 'status';
-        statusMessage.textContent = '処理中...';
+        statusMessage.style.display = 'none';   // 処理待ち中は非表示
+        progressStep.textContent = '他のジョブを実行中です。処理を待っています...';
+        progressBar.style.width = '0%';
+        progressPercentage.textContent = '0%';
+        submitButton.disabled = true;
+        submitButton.textContent = '処理中...';
+        
+        setTimeout(() => checkStatus(jobId), 2000);
+    } else {
+        // 処理中の表示
+        status.className = 'status';
+        statusMessage.style.display = 'none';   // 処理中は非表示
         submitButton.disabled = true;
         submitButton.textContent = '処理中...';
         
         if (data.current_step) {
-            let progressText = `現在の処理: ${data.current_step}`;
-            if (data.progress && data.progress.total > 0) {
-                const percent = Math.round((data.progress.current / data.progress.total) * 100);
-                progressText += ` (${percent}% 完了)`;
+            progressStep.textContent = `処理中: ${data.current_step}`;
+            if (data.progress) {
+                const percent = data.progress.current;
+                progressBar.style.width = `${percent}%`;
+                progressPercentage.textContent = `${percent}%`;
             }
-            progressInfo.textContent = progressText;
         }
         
         setTimeout(() => checkStatus(jobId), 2000);
