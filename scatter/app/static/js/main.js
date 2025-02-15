@@ -33,9 +33,8 @@ async function checkStatus(jobId) {
               (data.current_step === 'initialization' && (!data.progress || data.progress.current === 0))) {
         // 処理待ち状態の表示
         status.className = 'status';
-        statusMessage.style.display = 'block';
-        statusMessage.textContent = '他のジョブを実行中です。処理を待っています...';
-        progressStep.textContent = '処理待ち';
+        statusMessage.style.display = 'none';   // 処理待ち中は非表示
+        progressStep.textContent = '他のジョブを実行中です。処理を待っています...';
         progressBar.style.width = '0%';
         progressPercentage.textContent = '0%';
         submitButton.disabled = true;
