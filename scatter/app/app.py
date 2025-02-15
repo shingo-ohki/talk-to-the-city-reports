@@ -284,19 +284,24 @@ def job_status(job_id):
                         
                         # 現在のステップの進捗を計算
                         if current_step in ['embedding', 'clustering', 'translation', 'aggregation', 'visualization']:
+                            # 進捗表示しないステップは一定の進捗率を加算
                             step_percentage = 0.5
                             current_percentage = (step_percentage * 100) / len(PIPELINE_STEPS)
                         else:
+                            # 進捗表示するステップは実際の進捗を計算
                             step_progress = pipeline_status.get('current_job_progress', 0)
-                            step_total = pipeline_status.get('current_job_tasks', 0)
+                            step_total = pipeline_status.get('current_job_tasks', 1)  # デフォルト値を1に変更
                             
+                            # 進捗情報が無効な場合は前回の進捗を維持
                             if step_total > 0:
                                 step_percentage = min(step_progress / step_total, 1.0)
-                                current_percentage = (step_percentage * 100) / len(PIPELINE_STEPS)
                             else:
-                                current_percentage = 0
+                                # step_totalが0以下の場合は、ステップ開始時の進捗として扱う
+                                step_percentage = 0.1  # 10%進行中として表示
+                            
+                            current_percentage = (step_percentage * 100) / len(PIPELINE_STEPS)
                         
-                        # 全体の進捗率を計算
+                        # 全体の進捗率を計算（前回の進捗より下がらないように）
                         total_percentage = max(
                             int(base_percentage + current_percentage),
                             last_progress
@@ -308,13 +313,16 @@ def job_status(job_id):
                             'total': 100
                         }
                         
-                        # 進捗の詳細情報を追加（進捗表示するステップの場合のみ）
-                        if current_step and current_step not in ['embedding', 'clustering', 'translation', 'aggregation', 'visualization']:
-                            if step_total > 0:
-                                job['progress'].update({
-                                    'step_progress': step_progress,
-                                    'step_total': step_total
-                                })
+                        # 進捗の詳細情報を追加（進捗表示するステップで、かつ有効な進捗情報がある場合のみ）
+                        if (current_step and 
+                            current_step not in ['embedding', 'clustering', 'translation', 'aggregation', 'visualization'] and
+                            step_progress is not None and 
+                            step_total is not None and 
+                            step_total > 0):
+                            job['progress'].update({
+                                'step_progress': step_progress,
+                                'step_total': step_total
+                            })
                         
                 except Exception as e:
                     print(f"Status file error: {str(e)}")

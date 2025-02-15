@@ -131,11 +131,6 @@ body {
     color: #2e7d32;
 }
 
-#progress-info {
-    margin-top: 0.5rem;
-    color: #666;
-}
-
 .label-with-sample {
     display: flex;
     align-items: center;
