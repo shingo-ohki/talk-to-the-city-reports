@@ -376,5 +376,54 @@ def download_sample_config():
     response.headers['Content-Disposition'] = 'attachment; filename=sample_config.json'
     return response
 
+@app.route('/pipeline/outputs/')
+def list_reports():
+    """生成されたレポートの一覧を表示"""
+    try:
+        reports = []
+        for dir_name in os.listdir(app.config['OUTPUT_FOLDER']):
+            dir_path = os.path.join(app.config['OUTPUT_FOLDER'], dir_name)
+            if os.path.isdir(dir_path):
+                # レポートの存在確認
+                report_path = os.path.join(dir_path, 'report', 'index.html')
+                if os.path.exists(report_path):
+                    try:
+                        # status.jsonからレポート情報を取得
+                        status_path = os.path.join(dir_path, 'status.json')
+                        config_path = os.path.join(app.config['CONFIG_FOLDER'], f"{dir_name}.json")
+                        
+                        # レポート名の取得（優先順位: status.json -> config.json -> ディレクトリ名）
+                        report_name = dir_name.replace('project_', '')
+                        if os.path.exists(status_path):
+                            with open(status_path, 'r', encoding='utf-8') as f:
+                                status_info = json.load(f)
+                                if 'name' in status_info:
+                                    report_name = status_info['name']
+                        elif os.path.exists(config_path):
+                            with open(config_path, 'r', encoding='utf-8') as f:
+                                config_info = json.load(f)
+                                if 'name' in config_info:
+                                    report_name = config_info['name']
+                        
+                        # 生成日時はディレクトリの作成日時から取得
+                        created_at = datetime.fromtimestamp(os.path.getctime(dir_path))
+                        
+                        reports.append({
+                            'id': dir_name,
+                            'name': report_name,
+                            'created_at': created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                            'url': f'/pipeline/outputs/{dir_name}/report/'
+                        })
+                    except Exception as e:
+                        print(f"Error processing report {dir_name}: {str(e)}")
+                        continue
+
+        # 生成日時で降順ソート
+        reports.sort(key=lambda x: x['created_at'], reverse=True)
+        
+        return render_template('reports.html', reports=reports)
+    except Exception as e:
+        return jsonify({'error': f'レポート一覧の取得に失敗しました: {str(e)}'}), 500
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)

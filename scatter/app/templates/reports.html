@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Talk to the City - レポート一覧</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/reports.css">
+</head>
+<body>
+    <div class="header">
+        <h1>レポート一覧</h1>
+        <a href="/" class="btn btn-secondary">新規レポート作成</a>
+    </div>
+    
+    <div class="reports-container">
+        {% if reports %}
+            <table class="reports-table">
+                <thead>
+                    <tr>
+                        <th class="col-name">レポート名</th>
+                        <th class="col-date">生成日時</th>
+                        <th class="col-action"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for report in reports %}
+                        <tr class="report-row">
+                            <td class="report-name">{{ report.name }}</td>
+                            <td class="report-date">{{ report.created_at }}</td>
+                            <td class="report-action">
+                                <a href="{{ report.url }}" class="btn btn-primary btn-sm">表示</a>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        {% else %}
+            <div class="no-reports">
+                生成されたレポートはありません。
+            </div>
+        {% endif %}
+    </div>
+</body>
+</html>
