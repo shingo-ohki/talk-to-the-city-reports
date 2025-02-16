@@ -1,0 +1,118 @@
+/* レポート一覧ページ専用のスタイル */
+.reports-container {
+    padding: 1rem;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    margin: 1rem auto;
+    max-width: 800px;
+}
+
+.reports-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.reports-table th,
+.reports-table td {
+    padding: 0.5rem 0.75rem;
+    text-align: left;
+    border-bottom: 1px solid #eee;
+    vertical-align: middle;
+}
+
+.reports-table th {
+    font-weight: 600;
+    color: #444;
+    background-color: #f8f9fa;
+    white-space: nowrap;
+}
+
+.reports-table td {
+    height: 48px;
+}
+
+.col-name {
+    width: 60%;
+}
+
+.col-date {
+    width: 30%;
+}
+
+.col-action {
+    width: 10%;
+    text-align: right;
+}
+
+.report-row:hover {
+    background-color: #f8f9fa;
+}
+
+.report-name {
+    font-weight: 500;
+    color: #333;
+    margin: 0;
+}
+
+.report-date {
+    color: #666;
+    font-size: 0.9rem;
+    margin: 0;
+}
+
+.report-action {
+    text-align: right;
+}
+
+.no-reports {
+    text-align: center;
+    color: #666;
+    padding: 2rem;
+    font-style: italic;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 600px) {
+    .reports-table {
+        font-size: 0.9rem;
+    }
+    
+    .reports-table th,
+    .reports-table td {
+        padding: 0.5rem;
+    }
+    
+    .btn-sm {
+        min-width: 60px;  /* モバイル表示時はボタンの幅を小さく */
+        padding: 0.25rem 0.5rem;
+        font-size: 0.8rem;
+    }
+}
+
+.btn-sm {
+    white-space: nowrap;  /* ボタン内のテキストを改行しない */
+    min-width: 80px;      /* ボタンの最小幅を設定 */
+}
+
+/* カスタマイズが必要な部分のみを残す */
+body {
+    background-color: #f8f9fa;
+}
+
+.table th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    color: #444;
+    white-space: nowrap;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.table td {
+    vertical-align: middle;
+}
+
+.btn-sm {
+    white-space: nowrap;  /* ボタン内のテキストを改行しない */
+    min-width: 80px;      /* ボタンの最小幅を設定 */
+}

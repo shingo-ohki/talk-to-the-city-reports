@@ -61,13 +61,51 @@ async function checkStatus(jobId) {
     }
 }
 
-function toggleSection(header) {
-    const section = header.parentElement;
-    const content = section.querySelector('.section-content');
-    const icon = header.querySelector('.toggle-icon');
+function toggleSection(card) {
+    const cardBody = card.querySelector('.card-body');
+    const icon = card.querySelector('.toggle-icon');
     
-    content.classList.toggle('collapsed');
-    header.classList.toggle('active');
+    // Bootstrapのcollapseクラスを使用
+    const bsCollapse = new bootstrap.Collapse(cardBody, {
+        toggle: true
+    });
+
+    // アイコンの回転
+    cardBody.addEventListener('shown.bs.collapse', function () {
+        icon.style.transform = 'rotate(180deg)';
+    });
+
+    cardBody.addEventListener('hidden.bs.collapse', function () {
+        icon.style.transform = 'rotate(0deg)';
+    });
+}
+
+// コピー機能の修正
+async function copyPrompt(targetId) {
+    const textarea = document.getElementById(targetId);
+    const textToCopy = textarea.placeholder;
+
+    try {
+        await navigator.clipboard.writeText(textToCopy);
+
+        // コピー成功時のフィードバック
+        const button = document.querySelector(`button[onclick="copyPrompt('${targetId}')"]`);
+        const icon = button.querySelector('.copy-icon');
+        const originalText = icon.textContent;
+
+        // 視覚的フィードバック
+        icon.textContent = '✓';
+        button.classList.add('btn-success');
+        button.classList.remove('btn-outline-secondary');
+
+        setTimeout(() => {
+            icon.textContent = originalText;
+            button.classList.remove('btn-success');
+            button.classList.add('btn-outline-secondary');
+        }, 2000);
+    } catch (err) {
+        console.error('クリップボードへのコピーに失敗しました:', err);
+    }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -191,6 +229,11 @@ document.addEventListener('DOMContentLoaded', () => {
             showError('エラーが発生しました: ' + error);
         }
     };
+
+    // 古いコピーボタンのイベントリスナーを削除
+    document.querySelectorAll('.copy-button').forEach(button => {
+        button.replaceWith(button.cloneNode(true));
+    });
 
     // コピーボタンの機能を追加
     document.querySelectorAll('.copy-button').forEach(button => {
