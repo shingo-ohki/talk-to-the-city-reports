@@ -88,3 +88,20 @@
         font-size: 0.8rem;
     }
 }
+
+/* カスタマイズが必要な部分のみを残す */
+body {
+    background-color: #f8f9fa;
+}
+
+.table th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+    color: #444;
+    white-space: nowrap;
+    border-bottom: 2px solid #dee2e6;
+}
+
+.table td {
+    vertical-align: middle;
+}

@@ -3,7 +3,7 @@ import os
 import json
 import subprocess
 from werkzeug.utils import secure_filename
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import threading
 import time
 from redis import Redis
@@ -405,13 +405,14 @@ def list_reports():
                                 if 'name' in config_info:
                                     report_name = config_info['name']
                         
-                        # 生成日時はディレクトリの作成日時から取得
+                        # 生成日時はディレクトリの作成日時から取得し、JSTに変換
                         created_at = datetime.fromtimestamp(os.path.getctime(dir_path))
+                        jst_created_at = created_at.astimezone(timezone(timedelta(hours=9)))
                         
                         reports.append({
                             'id': dir_name,
                             'name': report_name,
-                            'created_at': created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                            'created_at': jst_created_at.strftime('%Y-%m-%d %H:%M:%S'),
                             'url': f'/pipeline/outputs/{dir_name}/report/'
                         })
                     except Exception as e:

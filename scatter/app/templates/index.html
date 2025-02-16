@@ -2,139 +2,183 @@
 <html>
 <head>
     <title>Talk to the City 実験場</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <div class="header">
-        <h1>Talk to the City 実験場</h1>
-        <a href="/pipeline/outputs/" class="btn btn-secondary header-reports-link">過去のレポート一覧</a>
+    <div class="container py-4">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h1>Talk to the City 実験場</h1>
+            <a href="/pipeline/outputs/" class="btn btn-outline-primary">過去のレポート一覧</a>
+        </div>
+
+        <div id="status" class="alert d-none">
+            <div id="status-message"></div>
+            <div class="progress-container mt-2">
+                <div class="d-flex justify-content-between mb-1">
+                    <span id="progress-step"></span>
+                    <span id="progress-percentage">0%</span>
+                </div>
+                <div class="progress">
+                    <div class="progress-bar" id="progress-bar" role="progressbar" style="width: 0%"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-4">
+            <div class="card-body">
+                <div class="description mb-3">
+                    <a href="https://github.com/AIObjectives/talk-to-the-city-reports/tree/main/scatter" target="_blank" class="text-decoration-none">Talk to the City (scatter)</a> を無料で気軽に試せる実験場です。<br>
+                    ご自由にお使いください。
+                </div>
+
+                <form id="uploadForm">
+                    <div class="card mb-3">
+                        <div class="card-header bg-light">
+                            <h5 class="card-title mb-0">意見データ（必須）</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <label for="fileInput" class="form-label">CSVファイル:</label>
+                                    <a href="/sample" download="sample_input.csv" class="text-primary small">サンプルCSVファイル</a>
+                                </div>
+                                <input type="file" id="fileInput" accept=".csv" class="form-control">
+                            </div>
+
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <label for="spreadsheetUrl" class="form-label">または Google スプレッドシートURL:</label>
+                                    <a href="https://docs.google.com/spreadsheets/d/1wMaQZjYczZuxvoGzizy4JT8zVWqGymb-uk2bENNX-cA/edit?usp=sharing" target="_blank" class="text-primary small">サンプルスプレッドシート</a>
+                                </div>
+                                <input type="text" id="spreadsheetUrl" class="form-control" placeholder="https://docs.google.com/spreadsheets/d/...">
+                                <div class="form-text">
+                                    ※シートは「リンクを知っている全員が閲覧可能」に設定してください。<br>
+                                    ※生成されるレポート（使用した意見データ含む）に閲覧制限はありません。公開可能なデータであることをご確認ください。
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 設定ファイルセクション -->
+                    <div class="card mb-3">
+                        <div class="card-header bg-light" role="button" data-bs-toggle="collapse" data-bs-target="#configSection" aria-expanded="false" aria-controls="configSection">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0">設定ファイル（オプション）</h5>
+                                <span class="toggle-icon">▼</span>
+                            </div>
+                        </div>
+                        <div id="configSection" class="collapse card-body">
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <label for="configFile" class="form-label">JSON設定ファイル:</label>
+                                    <a href="/sample-config" download="sample_config.json" class="text-primary small">サンプル設定ファイル</a>
+                                </div>
+                                <input type="file" id="configFile" accept=".json" class="form-control">
+                                <div class="form-text">※設定ファイルを指定しない場合はデフォルト設定を使用します</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- プロンプト設定セクション -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-light" role="button" data-bs-toggle="collapse" data-bs-target="#promptSection" aria-expanded="false" aria-controls="promptSection">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0">プロンプト設定（オプション）</h5>
+                                <span class="toggle-icon">▼</span>
+                            </div>
+                        </div>
+                        <div id="promptSection" class="collapse card-body">
+                            <!-- 各プロンプト入力フィールド -->
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <label for="extractionPrompt" class="form-label">抽出(extraction)処理用プロンプト:</label>
+                                    <button type="button" 
+                                            class="btn btn-outline-secondary btn-sm" 
+                                            onclick="copyPrompt('extractionPrompt')"
+                                            title="サンプルプロンプトの内容をコピー">
+                                        <span class="copy-icon">📋</span>
+                                        <span class="d-none d-md-inline ms-1">サンプルをコピー</span>
+                                    </button>
+                                </div>
+                                <textarea id="extractionPrompt" class="form-control font-monospace" rows="10"></textarea>
+                                <div class="form-text">
+                                    ※プロンプトの形式: /system, /human, /ai で始まる行で区切ってメッセージを記述
+                                    <br>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <label for="labellingPrompt" class="form-label">ラベリング(labelling)処理用プロンプト:</label>
+                                    <button type="button" 
+                                            class="btn btn-outline-secondary btn-sm" 
+                                            onclick="copyPrompt('labellingPrompt')"
+                                            title="サンプルプロンプトの内容をコピー">
+                                        <span class="copy-icon">📋</span>
+                                        <span class="d-none d-md-inline ms-1">サンプルをコピー</span>
+                                    </button>
+                                </div>
+                                <textarea id="labellingPrompt" class="form-control font-monospace" rows="10"></textarea>
+                                <div class="form-text">
+                                    ※プロンプトの形式: /system, /human, /ai で始まる行で区切ってメッセージを記述
+                                    <br>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <label for="takeawaysPrompt" class="form-label">まとめ(takeaways)処理用プロンプト:</label>
+                                    <button type="button" 
+                                            class="btn btn-outline-secondary btn-sm" 
+                                            onclick="copyPrompt('takeawaysPrompt')"
+                                            title="サンプルプロンプトの内容をコピー">
+                                        <span class="copy-icon">📋</span>
+                                        <span class="d-none d-md-inline ms-1">サンプルをコピー</span>
+                                    </button>
+                                </div>
+                                <textarea id="takeawaysPrompt" class="form-control font-monospace" rows="10"></textarea>
+                                <div class="form-text">
+                                    ※プロンプトの形式: /system, /human, /ai で始まる行で区切ってメッセージを記述
+                                    <br>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <label for="overviewPrompt" class="form-label">概要(overview)処理用プロンプト:</label>
+                                    <button type="button" 
+                                            class="btn btn-outline-secondary btn-sm" 
+                                            onclick="copyPrompt('overviewPrompt')"
+                                            title="サンプルプロンプトの内容をコピー">
+                                        <span class="copy-icon">📋</span>
+                                        <span class="d-none d-md-inline ms-1">サンプルをコピー</span>
+                                    </button>
+                                </div>
+                                <textarea id="overviewPrompt" class="form-control font-monospace" rows="10"></textarea>
+                                <div class="form-text">
+                                    ※プロンプトの形式: /system, /human, /ai で始まる行で区切ってメッセージを記述
+                                    <br>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="text-center">
+                        <button type="submit" class="btn btn-primary px-4">レポートを生成する</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <footer class="text-end text-muted small">
+            <p>
+                このツールへの要望は<a href="https://docs.google.com/forms/d/e/1FAIpQLSdwZZfSKcpkJtQH8osW6Xlv5rOuIEdCGfdJQhbwVI8-firZcw/viewform?usp=dialog" target="_blank" class="text-decoration-none">こちら</a><br>
+                要望を Talk to the City で分析したレポートは<a href="./pipeline/outputs/feature_request/report/" target="_blank" class="text-decoration-none">こちら</a>（で公開予定）
+            </p>
+        </footer>
     </div>
-    
-    <div id="status" class="status">
-        <div id="status-message"></div>
-        <div class="progress-container">
-            <div class="progress-text">
-                <span id="progress-step"></span>
-                <span id="progress-percentage">0%</span>
-            </div>
-            <div class="progress-bar" id="progress-bar"></div>
-        </div>
-    </div>
 
-    <section class="upload-section">
-        <div class="description">
-            <a href="https://github.com/AIObjectives/talk-to-the-city-reports/tree/main/scatter" target="_blank">Talk to the City (scatter)</a> を無料で気軽に試せる実験場です。<br>
-            ご自由にお使いください。<br>
-        </div>
-        <form id="uploadForm" class="upload-form">
-            <div class="form-section">
-                <h3 class="subsection-title">意見データ（必須）</h3>
-                <div class="form-group">
-                    <div class="label-with-sample">
-                        <label for="fileInput" class="form-label">CSVファイル:</label>
-                        <a href="/sample" download="sample_input.csv" class="sample-link-inline">サンプルCSVファイル</a>
-                    </div>
-                    <input type="file" id="fileInput" accept=".csv" class="form-input">
-                </div>
-
-                <div class="form-group">
-                    <div class="label-with-sample">
-                        <label for="spreadsheetUrl" class="form-label">または Google スプレッドシートURL:</label>
-                        <a href="https://docs.google.com/spreadsheets/d/1wMaQZjYczZuxvoGzizy4JT8zVWqGymb-uk2bENNX-cA/edit?usp=sharing" target="_blank" class="sample-link-inline">サンプルスプレッドシート</a>
-                    </div>
-                    <input type="text" id="spreadsheetUrl" class="form-input" placeholder="https://docs.google.com/spreadsheets/d/...">
-                    <small class="form-hint">
-                        ※シートは「リンクを知っている全員が閲覧可能」に設定してください。<br>
-                        ※生成されるレポート（使用した意見データ含む）に閲覧制限はありません。公開可能なデータであることをご確認ください。
-                    </small>
-                </div>
-            </div>
-
-            <div class="form-section collapsible">
-                <div class="section-header" onclick="toggleSection(this)">
-                    <h3 class="subsection-title">設定ファイル（オプション）</h3>
-                    <span class="toggle-icon">▼</span>
-                </div>
-                <div class="section-content collapsed">
-                    <div class="form-group">
-                        <div class="label-with-sample">
-                            <label for="configFile" class="form-label">JSON設定ファイル:</label>
-                            <a href="/sample-config" download="sample_config.json" class="sample-link-inline">サンプル設定ファイル</a>
-                        </div>
-                        <input type="file" id="configFile" accept=".json" class="form-input">
-                        <small class="form-hint">※設定ファイルを指定しない場合はデフォルト設定を使用します</small>
-                    </div>
-                </div>
-            </div>
-
-            <div class="form-section collapsible">
-                <div class="section-header" onclick="toggleSection(this)">
-                    <h3 class="subsection-title">プロンプト設定（オプション）</h3>
-                    <span class="toggle-icon">▼</span>
-                </div>
-                <div class="section-content collapsed">
-                    <div class="form-group">
-                        <div class="label-with-copy">
-                            <label for="extractionPrompt" class="form-label">抽出(extraction)処理用プロンプト:</label>
-                            <button type="button" class="copy-button" data-target="extractionPrompt">
-                                <span class="copy-icon">📋</span>
-                                <span class="copy-tooltip">デフォルト値をコピー</span>
-                            </button>
-                        </div>
-                        <textarea id="extractionPrompt" class="form-input prompt-textarea" rows="15" placeholder=""></textarea>
-                        <small class="form-hint">※プロンプトの形式: /system, /human, /ai で始まる行で区切ってメッセージを記述</small>
-                    </div>
-                    <div class="form-group">
-                        <div class="label-with-copy">
-                            <label for="labellingPrompt" class="form-label">ラベリング(labelling)処理用プロンプト:</label>
-                            <button type="button" class="copy-button" data-target="labellingPrompt">
-                                <span class="copy-icon">📋</span>
-                                <span class="copy-tooltip">デフォルト値をコピー</span>
-                            </button>
-                        </div>
-                        <textarea id="labellingPrompt" class="form-input prompt-textarea" rows="15" placeholder=""></textarea>
-                        <small class="form-hint">※プロンプトの形式: /system, /human, /ai で始まる行で区切ってメッセージを記述</small>
-                    </div>
-                    <div class="form-group">
-                        <div class="label-with-copy">
-                            <label for="takeawaysPrompt" class="form-label">まとめ(takeaways)処理用プロンプト:</label>
-                            <button type="button" class="copy-button" data-target="takeawaysPrompt">
-                                <span class="copy-icon">📋</span>
-                                <span class="copy-tooltip">デフォルト値をコピー</span>
-                            </button>
-                        </div>
-                        <textarea id="takeawaysPrompt" class="form-input prompt-textarea" rows="15" placeholder=""></textarea>
-                        <small class="form-hint">※プロンプトの形式: /system, /human, /ai で始まる行で区切ってメッセージを記述</small>
-                    </div>
-                    <div class="form-group">
-                        <div class="label-with-copy">
-                            <label for="overviewPrompt" class="form-label">概要(overview)処理用プロンプト:</label>
-                            <button type="button" class="copy-button" data-target="overviewPrompt">
-                                <span class="copy-icon">📋</span>
-                                <span class="copy-tooltip">デフォルト値をコピー</span>
-                            </button>
-                        </div>
-                        <textarea id="overviewPrompt" class="form-input prompt-textarea" rows="15" placeholder=""></textarea>
-                        <small class="form-hint">※プロンプトの形式: /system, /human, /ai で始まる行で区切ってメッセージを記述</small>
-                    </div>
-                </div>
-            </div>
-
-            <button type="submit" class="btn btn-primary submit-button">レポートを生成する</button>
-        </form>
-    </section>
-
-    <footer class="footer">
-        <div class="container">
-            <div class="footer-content">
-                <div class="footer-right">
-                    このツールへの要望は<a href="https://docs.google.com/forms/d/e/1FAIpQLSdwZZfSKcpkJtQH8osW6Xlv5rOuIEdCGfdJQhbwVI8-firZcw/viewform?usp=dialog" target="_blank" class="feature-request-link">こちら</a><br/>
-                    要望を Talk to the City で分析したレポートは<a href="./pipeline/outputs/feature_request/report/" target="_blank">こちら</a>（で公開予定）
-                </div>
-            </div>
-        </div>
-    </footer>
-
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/static/js/main.js"></script>
 </body>
 </html>
