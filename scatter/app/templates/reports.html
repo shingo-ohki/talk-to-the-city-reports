@@ -12,7 +12,7 @@
     <div class="container py-4">
         <div class="d-flex justify-content-between align-items-center mb-2">
             <h1>レポート一覧</h1>
-            <a href="/" class="btn btn-outline-primary">新規レポート作成</a>
+            <a href="/" class="btn btn-outline-primary">トップへ戻る</a>
         </div>
 
         <div class="card">
@@ -33,7 +33,7 @@
                                         <td>{{ report.name }}</td>
                                         <td>{{ report.created_at }}</td>
                                         <td class="text-end">
-                                            <a href="{{ report.url }}" class="btn btn-primary btn-sm">表示</a>
+                                            <a href="{{ report.url }}" class="btn btn-primary btn-sm" target="_blank">レポートを表示</a>
                                         </td>
                                     </tr>
                                 {% endfor %}

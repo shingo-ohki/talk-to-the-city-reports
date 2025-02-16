@@ -84,9 +84,15 @@
     }
     
     .btn-sm {
+        min-width: 60px;  /* モバイル表示時はボタンの幅を小さく */
         padding: 0.25rem 0.5rem;
         font-size: 0.8rem;
     }
+}
+
+.btn-sm {
+    white-space: nowrap;  /* ボタン内のテキストを改行しない */
+    min-width: 80px;      /* ボタンの最小幅を設定 */
 }
 
 /* カスタマイズが必要な部分のみを残す */
@@ -104,4 +110,9 @@ body {
 
 .table td {
     vertical-align: middle;
+}
+
+.btn-sm {
+    white-space: nowrap;  /* ボタン内のテキストを改行しない */
+    min-width: 80px;      /* ボタンの最小幅を設定 */
 }
