@@ -8,7 +8,13 @@ import threading
 import time
 from redis import Redis
 from rq import Queue
+from rq_scheduler import Scheduler
+import hashlib
 import pandas as pd
+import traceback  # tracebackモジュールを追加
+import sys
+from pathlib import Path
+import importlib.util
 
 app = Flask(__name__, static_folder='static')
 base_path = '/workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/pipeline'
@@ -20,6 +26,13 @@ app.config['JOBS'] = {}
 
 redis_conn = Redis(host='redis', port=6379)
 q = Queue(connection=redis_conn)
+scheduler = Scheduler(connection=redis_conn)
+
+UPDATE_INTERVALS = {
+    'DEFAULT_INTERVAL_SECONDS': 300, # 86400,  # 24時間
+    'MAX_CHECK_COUNT': 30,       # 最大チェック回数
+    'MAX_ERROR_COUNT': 3,        # 最大連続エラー回数
+}
 
 # 必要なディレクトリを作成する関数
 def ensure_directories():
@@ -30,11 +43,75 @@ def ensure_directories():
     ]:
         os.makedirs(directory, exist_ok=True)
 
-# アプリケーション起動時にディレクトリを作成
+# 1. スケジューラー関連の関数を先に定義
+def schedule_spreadsheet_check(spreadsheet_url, config_path, project_id):
+    """スプレッドシートの定期チェックをスケジュール"""
+    try:
+        # 既存のジョブをキャンセル
+        for job in scheduler.get_jobs():
+            if job.meta.get('project_id') == project_id:
+                scheduler.cancel(job)
+
+        # 次回実行時刻を設定
+        next_run = datetime.now(timezone.utc)
+
+        # 1つの定期実行ジョブとしてスケジュール
+        job = scheduler.schedule(
+            scheduled_time=next_run,  
+            func='app.check_spreadsheet_updates',
+            args=[spreadsheet_url, config_path, project_id],
+            interval=UPDATE_INTERVALS['DEFAULT_INTERVAL_SECONDS'],
+            repeat=UPDATE_INTERVALS['MAX_CHECK_COUNT'],
+            meta={
+                'project_id': project_id,
+                'interval': UPDATE_INTERVALS['DEFAULT_INTERVAL_SECONDS'],
+                'next_run': next_run.isoformat()
+            }
+        )
+
+        print(f"Scheduled job {job.id} for project {project_id}")
+        print(f"Next run at: {next_run.isoformat()}")
+        return job.id
+
+    except Exception as e:
+        print(f"Error scheduling job: {str(e)}")
+        traceback.print_exc()
+        raise
+
+# 2. リストア関数を定義
+def restore_scheduled_jobs():
+    """アプリケーション起動時に自動更新ジョブを復元する"""
+    try:
+        config_dir = app.config['CONFIG_FOLDER']
+        for filename in os.listdir(config_dir):
+            if filename.endswith('_auto_update.json'):
+                project_id = filename.replace('_auto_update.json', '')
+                auto_update_path = os.path.join(config_dir, filename)
+                config_path = os.path.join(config_dir, f"{project_id}.json")
+
+                with open(auto_update_path, 'r') as f:
+                    auto_update_config = json.load(f)
+
+                if auto_update_config.get('enabled', False):
+                    schedule_spreadsheet_check(
+                        auto_update_config['spreadsheet_url'],
+                        config_path,
+                        project_id
+                    )
+                    print(f"Restored scheduled job for project: {project_id}")
+
+    except Exception as e:
+        print(f"Error restoring scheduled jobs: {str(e)}")
+        traceback.print_exc()
+
+# 3. アプリケーション起動時の処理
 ensure_directories()
+restore_scheduled_jobs()
 
 def create_config(filename, output_dir, custom_config=None):
-    default_config = {
+    """設定ファイルを作成する関数"""
+    # 1. パイプライン用の基本設定
+    pipeline_config = {
         "name": "Recursive Public, Agenda Setting",
         "question": "「第２章 都市づくりのテーマと⽅針」に関してどんな意見がありますか？",
         "input": filename,
@@ -67,46 +144,84 @@ def create_config(filename, output_dir, custom_config=None):
         }
     }
 
+    # 2. アプリケーション管理用の設定（別ファイル）
+    app_config = {
+        "project_id": output_dir,
+        "created_at": datetime.now().isoformat(),
+        "status": "pending"
+    }
+
+    # 3. 自動更新設定（別ファイル）
+    auto_update_config = None
+
     if custom_config:
-        # 必須フィールドを含むデフォルト設定を基準に、カスタム設定をマージ
-        merged_config = default_config.copy()
-        
-        # 再帰的にディクショナリをマージする関数
-        def deep_merge(d1, d2):
-            for k, v in d2.items():
-                if k in d1 and isinstance(d1[k], dict) and isinstance(v, dict):
-                    deep_merge(d1[k], v)
-                else:
-                    d1[k] = v
-        
-        deep_merge(merged_config, custom_config)
-        
-        # 必須フィールドの上書き
-        merged_config['input'] = filename
-        
-        return merged_config
-    
-    return default_config
+        # auto_update設定の抽出と保存
+        if 'auto_update' in custom_config:
+            auto_update_config = custom_config.pop('auto_update')
+            save_auto_update_config(output_dir, auto_update_config)
+
+        # カスタム設定のマージ（パイプライン設定のみ）
+        pipeline_config.update(custom_config)
+
+    # 4. 各設定ファイルの保存
+    save_pipeline_config(output_dir, pipeline_config)
+    save_app_config(output_dir, app_config)
+
+    return pipeline_config
+
+def save_pipeline_config(output_dir, config):
+    """パイプライン設定を保存"""
+    config_path = os.path.join(app.config['CONFIG_FOLDER'], f"{output_dir}.json")
+    with open(config_path, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
+
+def save_app_config(output_dir, config):
+    """アプリケーション管理用設定を保存"""
+    config_path = os.path.join(app.config['CONFIG_FOLDER'], f"{output_dir}_app.json")
+    with open(config_path, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
+
+def save_auto_update_config(output_dir, config):
+    """自動更新設定を保存"""
+    config_path = os.path.join(app.config['CONFIG_FOLDER'], f"{output_dir}_auto_update.json")
+    with open(config_path, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
 
 def run_pipeline(config_path, job_id):
     try:
+        # ジョブの初期状態を設定
         app.config['JOBS'][job_id] = {
             'status': 'queued',
-            'started_at': datetime.now().isoformat()
+            'started_at': datetime.now().isoformat(),
+            'current_step': 'initialization',
+            'project_id': config_path.split('/')[-1].replace('.json', ''),
+            'progress': {
+                'current': 0,
+                'total': 100,
+                'step_progress': 0,
+                'step_total': 1
+            }
         }
-        
-        job = q.enqueue(
-            'worker.process_pipeline',
-            config_path,
-            job_timeout=3600,
-            result_ttl=86400     # 24時間保持
+
+        # 既存のステータスファイルを削除（進捗状況をリセット）
+        status_file = os.path.join(
+            app.config['OUTPUT_FOLDER'],
+            app.config['JOBS'][job_id]['project_id'],
+            'status.json'
         )
-        app.config['JOBS'][job_id]['rq_job_id'] = job.id
-        
+        if os.path.exists(status_file):
+            os.remove(status_file)
+
+        # ワーカーにジョブを送信
+        if process_pipeline(config_path):
+            return True
+        return False
+
     except Exception as e:
         print(f"Exception in pipeline: {str(e)}")
         app.config['JOBS'][job_id]['status'] = 'failed'
         app.config['JOBS'][job_id]['error'] = str(e)
+        return False
 
 def get_spreadsheet_data(spreadsheet_url):
     """スプレッドシートURLからデータを取得"""
@@ -140,6 +255,93 @@ def process_input_data(data_source):
 
     return input_path, output_dir, timestamp
 
+def check_spreadsheet_updates(spreadsheet_url, config_path, project_id):
+    try:
+        # この関数が呼ばれたことをログに記録
+        print(f"Checking for updates in project {project_id}")
+
+        # 自動更新設定を別ファイルから読み込む
+        auto_update_path = config_path.replace('.json', '_auto_update.json')
+        auto_update_config = {}
+        
+        if os.path.exists(auto_update_path):
+            with open(auto_update_path, 'r') as f:
+                auto_update_config = json.load(f)
+        
+        # メインの設定ファイルを読み込む
+        with open(config_path, 'r') as f:
+            config = json.load(f)
+        
+        # 自動更新が無効化されている場合は終了
+        if not auto_update_config.get('enabled', False):
+            return
+
+        # エラー回数をカウント
+        error_count = auto_update_config.get('error_count', 0)
+        
+        try:
+            # スプレッドシートの内容を取得
+            df = get_spreadsheet_data(spreadsheet_url)
+            current_hash = hashlib.md5(df.to_csv().encode()).hexdigest()
+            last_hash = auto_update_config.get('content_hash')
+            
+            if current_hash != last_hash:
+                # 定期更新を実行していることをログに記録
+                print(f"Updating project {project_id} due to content change")
+                # レポート生成処理
+                result = run_pipeline(config_path, f"job_auto_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
+                
+                if not result:
+                    raise Exception("レポート生成に失敗しました")
+                
+                # 設定を更新
+                auto_update_config.update({
+                    'content_hash': current_hash,
+                    'last_update': datetime.now().isoformat(),
+                    'error_count': 0
+                })
+
+                # 自動更新設定を保存
+                save_auto_update_config(project_id, auto_update_config)
+            else:
+                # スプレッドシートの内容が変更されていない場合
+                print(f"No updates found for project {project_id}")
+                
+            # エラーカウントが上限を超えた場合の処理
+            if error_count >= UPDATE_INTERVALS['MAX_ERROR_COUNT']:
+                scheduler.cancel_job(job.id)
+                print(f"Auto-update disabled for project {project_id} due to consecutive errors")
+                
+        except Exception as inner_e:
+            # エラー回数をインクリメント
+            error_count += 1
+            auto_update_config['error_count'] = error_count
+            save_auto_update_config(project_id, auto_update_config)
+            raise inner_e
+                    
+    except Exception as e:
+        print(f"Error in check_spreadsheet_updates: {str(e)}")
+        traceback.print_exc()
+        raise
+
+def process_pipeline(config_path):
+    """パイプライン処理をワーカーにエンキューする関数"""
+    try:
+        # RQジョブをエンキュー
+        job = q.enqueue(
+            'worker.process_pipeline',
+            config_path,
+            job_timeout=3600,
+            result_ttl=86400
+        )
+        
+        return True
+            
+    except Exception as e:
+        print(f"Error in process_pipeline: {str(e)}")
+        traceback.print_exc()
+        raise
+
 @app.route('/')
 def index():
     return render_template('index.html')
@@ -147,85 +349,148 @@ def index():
 @app.route('/upload', methods=['POST'])
 def upload_file():
     try:
+        # リクエストの内容を詳細にログ出力
+        print("=== Request Debug ===")
+        print("Form Data:")
+        for key, value in request.form.items():
+            print(f"{key}: {value}")
+        print("\nFiles:")
+        for key, file in request.files.items():
+            print(f"{key}: {file.filename if file else None}")
+        print("===================")
+        
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_dir = f"project_{timestamp}"
-        custom_config = {}  # 空の辞書で初期化
+        job_id = f"job_{timestamp}"  # job_idをここで定義
+        project_id = output_dir      # project_idをここで定義
+        custom_config = {}
+        base_filename = output_dir
+        config_path = None
 
+        # カスタム設定の処理を追加
+        custom_config = {}
+        
         # 設定ファイルの処理
-        if 'config' in request.files:
+        if request.files.get('config'):
             config_file = request.files['config']
-            if config_file.filename != '':
-                try:
-                    config_data = config_file.read().decode('utf-8')
-                    if config_data.strip():
-                        custom_config = json.loads(config_data)
-                except json.JSONDecodeError as e:
-                    return jsonify({'error': f'設定ファイルのJSONが不正です: {str(e)}'}), 400
+            config_content = config_file.read().decode('utf-8')
+            try:
+                custom_config = json.loads(config_content)
+                print(f"Loaded custom config: {custom_config}")
+            except json.JSONDecodeError as e:
+                raise ValueError(f"設定ファイルのJSONフォーマットが不正です: {str(e)}")
 
-        # フォームからのプロンプト設定を追加
+        # フォームからのプロンプト設定の追加
         for prompt_type in ['extraction', 'labelling', 'takeaways', 'overview']:
-            if prompt_type not in custom_config:
-                custom_config[prompt_type] = {}
-            
-            form_key = f"{prompt_type}Prompt"
-            if form_key in request.form and request.form[form_key].strip():
-                custom_config[prompt_type]['prompt'] = request.form[form_key].strip()
+            if request.form.get(f'{prompt_type}Prompt'):
+                if prompt_type not in custom_config:
+                    custom_config[prompt_type] = {}
+                custom_config[prompt_type]['prompt'] = request.form[f'{prompt_type}Prompt']
 
-        # スプレッドシートURLからの処理
+        # スプレッドシートURLと自動更新の処理
         if request.form.get('spreadsheet_url'):
             try:
-                df = get_spreadsheet_data(request.form['spreadsheet_url'])
-                filename = f"spreadsheet_{timestamp}.csv"
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                spreadsheet_url = request.form['spreadsheet_url']
+                auto_update = request.form.get('autoUpdate') == 'true'
+                print(f"Processing spreadsheet: {spreadsheet_url}")
+                print(f"Auto update enabled: {auto_update}")
+
+                if auto_update:
+                    # 設定ファイルの内容、プロンプト、URLのみでハッシュを生成
+                    unique_config = {
+                        'spreadsheet_url': spreadsheet_url,
+                        'custom_config': custom_config,
+                        'prompts': {
+                            'extraction': request.form.get('extractionPrompt', ''),
+                            'labelling': request.form.get('labellingPrompt', ''),
+                            'takeaways': request.form.get('takeawaysPrompt', ''),
+                            'overview': request.form.get('overviewPrompt', '')
+                        }
+                    }
+                    
+                    # アップロードされた設定ファイルの内容を追加
+                    if request.files.get('config'):
+                        config_file = request.files['config']
+                        config_content = config_file.read().decode('utf-8')
+                        unique_config['uploaded_config'] = config_content
+                    
+                    # ユニークなハッシュを生成（タイムスタンプを除外）
+                    unique_hash = hashlib.md5(
+                        json.dumps(unique_config, sort_keys=True).encode()
+                    ).hexdigest()[:8]
+                    
+                    project_id = f"auto_{unique_hash}"
+                    output_dir = project_id
+                    base_filename = output_dir
+                    job_id = f"job_{project_id}"
+
+                # RQジョブ情報を設定
+                app.config['JOBS'][job_id] = {
+                    'status': 'queued',
+                    'auto_update': auto_update if request.form.get('spreadsheet_url') else False,
+                    'project_id': project_id,
+                    'started_at': datetime.now().isoformat(),
+                    'current_step': 'initialization',
+                    'progress': {'current': 0, 'total': 100}
+                }
+
+                # スプレッドシートからデータを取得
+                df = get_spreadsheet_data(spreadsheet_url)
+                print(f"Retrieved data shape: {df.shape}")
+                
+                # CSVファイルを保存
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_filename}.csv")
                 df.to_csv(filepath, index=False)
-                base_filename = f"spreadsheet_{timestamp}"
+                print(f"Saved CSV to: {filepath}")
+
+                # メイン設定を作成
+                config = create_config(base_filename, output_dir, custom_config)
+                config_path = os.path.join(app.config['CONFIG_FOLDER'], f"{output_dir}.json")
+                with open(config_path, 'w', encoding='utf-8') as f:
+                    json.dump(config, f, indent=2, ensure_ascii=False)
+
+                if auto_update:
+                    auto_update_config = {
+                        "enabled": True,
+                        "spreadsheet_url": spreadsheet_url,
+                        "content_hash": hashlib.md5(df.to_csv().encode()).hexdigest(),
+                        "last_update": datetime.now().isoformat(),
+                        "check_count": 0,
+                        "max_checks": UPDATE_INTERVALS['MAX_CHECK_COUNT'],
+                        "error_count": 0,
+                        "check_interval": UPDATE_INTERVALS['DEFAULT_INTERVAL_SECONDS']
+                    }
+                    
+                    auto_update_path = os.path.join(
+                        app.config['CONFIG_FOLDER'],
+                        f"{output_dir}_auto_update.json"
+                    )
+                    with open(auto_update_path, 'w', encoding='utf-8') as f:
+                        json.dump(auto_update_config, f, indent=2, ensure_ascii=False)
+                    print(f"Saved auto-update config to: {auto_update_path}")
+
+                    # 自動更新のスケジュール
+                    schedule_spreadsheet_check(spreadsheet_url, config_path, project_id)
+                    print("Scheduled auto-update check")
+
             except Exception as e:
-                return jsonify({'error': f'スプレッドシートの読み込みに失敗: {str(e)}'}), 400
+                print(f"Error processing spreadsheet: {str(e)}")
+                traceback.print_exc()  # スタックトレースを出力
+                raise
 
-        # 既存のファイルアップロード処理
-        else:
-            if 'file' not in request.files:
-                return jsonify({'error': 'ファイルがありません'}), 400
-
-            file = request.files['file']
-            if file.filename == '':
-                return jsonify({'error': 'ファイルが選択されていません'}), 400
-
-            if not file.filename.endswith('.csv'):
-                return jsonify({'error': '拡張子がCSVではありません'}), 400
-
-            filename = secure_filename(file.filename)
-            base_filename = os.path.splitext(filename)[0]
-            file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-
-        # 共通の後続処理
-        config = create_config(
-            base_filename,
-            output_dir,
-            custom_config  # custom_configがNoneの場合でもデフォルト設定が使用される
-        )
-
-        # デバッグ用のログ出力
-        print("Final config:", config)
-
-        # 本ツールの機能要望レポートの場合は毎回同じ場所にレポートを保存（上書き）する
-        if config.get('name') == '本ツールの機能要望レポート':
-            output_dir = 'feature_request'
-
-        config_path = os.path.join(app.config['CONFIG_FOLDER'], f"{output_dir}.json")
-        with open(config_path, 'w', encoding='utf-8') as f:
-            json.dump(config, f, indent=2, ensure_ascii=False)
-        
-        job_id = f"job_{timestamp}"
         thread = threading.Thread(target=run_pipeline, args=(config_path, job_id))
         thread.start()
         
         return jsonify({
             'success': True,
             'message': '処理を開始しました',
-            'job_id': job_id
+            'job_id': job_id,
+            'project_id': project_id
         })
+
     except Exception as e:
+        print(f"Upload error: {str(e)}")
+        traceback.print_exc()  # スタックトレースを出力
         return jsonify({'error': f'エラーが発生しました: {str(e)}'}), 500
 
 # 全ステップのリストを定義
@@ -241,104 +506,80 @@ def job_status(job_id):
             return jsonify({'error': 'ジョブが見つかりません'}), 404
         
         job = app.config['JOBS'][job_id]
-        if 'rq_job_id' in job:
-            rq_job = q.fetch_job(job['rq_job_id'])
-            if rq_job is None:
-                job['status'] = 'failed'
-                job['error'] = 'ジョブが見つかりません'
-            elif rq_job.is_finished:
-                job['status'] = 'completed'
-            elif rq_job.is_failed:
-                job['status'] = 'failed'
-                job['error'] = str(rq_job.exc_info)
-            else:
-                job['status'] = 'running'
+        project_id = job.get('project_id')
+        
+        if project_id:
+            status_file = os.path.join(
+                app.config['OUTPUT_FOLDER'],
+                project_id,
+                'status.json'
+            )
+            
+            if os.path.exists(status_file):
                 try:
-                    status_file = f"{app.config['OUTPUT_FOLDER']}/{job_id.replace('job_', 'project_')}/status.json"
-                    if not os.path.exists(status_file):
-                        return jsonify({
-                            'status': 'running',
-                            'current_step': 'initialization',
-                            'progress': {'current': 0, 'total': 100}
-                        })
-                    
                     with open(status_file) as f:
-                        pipeline_status = json.load(f)
-                        current_step = pipeline_status.get('current_job', '')
-                        last_completed_step = pipeline_status.get('last_completed_job', '')
-                        last_progress = job.get('progress', {}).get('current', 0)
-                        
-                        # ステップの状態を保存
-                        job['current_step'] = current_step
-                        job['last_completed_step'] = last_completed_step
-                        
-                        try:
-                            current_step_index = PIPELINE_STEPS.index(current_step)
-                            last_completed_index = PIPELINE_STEPS.index(last_completed_step) if last_completed_step else max(0, current_step_index - 1)
-                        except ValueError:
-                            current_step_index = 0
-                            last_completed_index = 0
-                        
-                        # 完了したステップの進捗を計算
-                        base_percentage = (last_completed_index * 100) / len(PIPELINE_STEPS)
+                        status_data = json.load(f)
+                    
+                    # Talk to the Cityのステータスに合わせて更新
+                    job['status'] = status_data.get('status', 'running')
+                    job['current_step'] = status_data.get('current_job', 'initialization')
+                    
+                    # キューイング中のジョブは特別な処理
+                    if job['status'] == 'queued':
+                        job['progress'] = {
+                            'current': 0,
+                            'total': 100,
+                            'step_progress': 0,
+                            'step_total': 1
+                        }
+                        return jsonify(job)
+
+                    # プログレス情報の更新
+                    if status_data.get('current_job') in PIPELINE_STEPS:
+                        step_index = PIPELINE_STEPS.index(status_data['current_job'])
+                        # 各ステップの重みを均等に配分
+                        step_weight = 100.0 / len(PIPELINE_STEPS)
+                        # 完了したステップの進捗
+                        completed_progress = step_index * step_weight
                         
                         # 現在のステップの進捗を計算
-                        if current_step in ['embedding', 'clustering', 'translation', 'aggregation', 'visualization']:
-                            # 進捗表示しないステップは一定の進捗率を加算
-                            step_percentage = 0.5
-                            current_percentage = (step_percentage * 100) / len(PIPELINE_STEPS)
-                        else:
-                            # 進捗表示するステップは実際の進捗を計算
-                            step_progress = pipeline_status.get('current_job_progress', 0)
-                            step_total = pipeline_status.get('current_job_tasks', 1)  # デフォルト値を1に変更
-                            
-                            # 進捗情報が無効な場合は前回の進捗を維持
-                            if step_total > 0:
-                                step_percentage = min(step_progress / step_total, 1.0)
-                            else:
-                                # step_totalが0以下の場合は、ステップ開始時の進捗として扱う
-                                step_percentage = 0.1  # 10%進行中として表示
-                            
-                            current_percentage = (step_percentage * 100) / len(PIPELINE_STEPS)
+                        step_progress = status_data.get('current_job_progress', 0) or 0
+                        step_total = status_data.get('current_jop_tasks', 1) or 1
                         
-                        # 全体の進捗率を計算（前回の進捗より下がらないように）
-                        total_percentage = max(
-                            int(base_percentage + current_percentage),
-                            last_progress
-                        )
+                        # 現在のステップの進捗率を計算
+                        current_step_progress = (step_progress / step_total) * step_weight
                         
-                        # 進捗情報を更新
+                        # 全体の進捗を計算
+                        total_progress = min(completed_progress + current_step_progress, 100)
+                        
                         job['progress'] = {
-                            'current': total_percentage,
-                            'total': 100
+                            'current': int(total_progress),
+                            'total': 100,
+                            'step_progress': step_progress,
+                            'step_total': step_total
                         }
-                        
-                        # 進捗の詳細情報を追加（進捗表示するステップで、かつ有効な進捗情報がある場合のみ）
-                        if (current_step and 
-                            current_step not in ['embedding', 'clustering', 'translation', 'aggregation', 'visualization'] and
-                            step_progress is not None and 
-                            step_total is not None and 
-                            step_total > 0):
-                            job['progress'].update({
-                                'step_progress': step_progress,
-                                'step_total': step_total
-                            })
-                        
-                except Exception as e:
-                    print(f"Status file error: {str(e)}")
-                    return jsonify({
-                        'status': 'running',
-                        'current_step': 'initialization',
-                        'progress': {'current': 0, 'total': 100}
-                    })
+                    
+                    # エラー情報があれば追加
+                    if status_data.get('status') == 'error':
+                        job['status'] = 'failed'
+                        job['error'] = status_data.get('error', 'Unknown error')
+                        if 'error_stack_trace' in status_data:
+                            job['error_stack_trace'] = status_data['error_stack_trace']
+                    
+                except Exception as file_error:
+                    print(f"Error reading status file: {str(file_error)}")
+                    job['status'] = 'failed'
+                    job['error'] = f'ステータスファイルの読み取りに失敗: {str(file_error)}'
         
         return jsonify(job)
         
     except Exception as e:
         print(f"Job status error: {str(e)}")
+        traceback.print_exc()
         return jsonify({
             'status': 'error',
-            'error': 'ステータスの取得に失敗しました'
+            'error': f'ステータスの取得に失敗しました: {str(e)}',
+            'stack_trace': traceback.format_exc()
         }), 500
 
 @app.route('/report/<path:path>')
@@ -388,33 +629,33 @@ def list_reports():
                 report_path = os.path.join(dir_path, 'report', 'index.html')
                 if os.path.exists(report_path):
                     try:
-                        # status.jsonからレポート情報を取得
-                        status_path = os.path.join(dir_path, 'status.json')
+                        # 設定ファイルからレポート情報を取得
                         config_path = os.path.join(app.config['CONFIG_FOLDER'], f"{dir_name}.json")
+                        auto_update_path = os.path.join(app.config['CONFIG_FOLDER'], f"{dir_name}_auto_update.json")
                         
-                        # レポート名の取得（優先順位: status.json -> config.json -> ディレクトリ名）
-                        report_name = dir_name.replace('project_', '')
-                        if os.path.exists(status_path):
-                            with open(status_path, 'r', encoding='utf-8') as f:
-                                status_info = json.load(f)
-                                if 'name' in status_info:
-                                    report_name = status_info['name']
-                        elif os.path.exists(config_path):
-                            with open(config_path, 'r', encoding='utf-8') as f:
-                                config_info = json.load(f)
-                                if 'name' in config_info:
-                                    report_name = config_info['name']
-                        
-                        # 生成日時はディレクトリの作成日時から取得し、JSTに変換
-                        created_at = datetime.fromtimestamp(os.path.getctime(dir_path))
-                        jst_created_at = created_at.astimezone(timezone(timedelta(hours=9)))
-                        
-                        reports.append({
-                            'id': dir_name,
-                            'name': report_name,
-                            'created_at': jst_created_at.strftime('%Y-%m-%d %H:%M:%S'),
-                            'url': f'/pipeline/outputs/{dir_name}/report/'
-                        })
+                        # レポート名とその他の情報を取得
+                        report_info = {
+                            'name': dir_name.replace('project_', ''),  # デフォルト名
+                            'url': f"/pipeline/outputs/{dir_name}/report/",
+                            'created_at': datetime.fromtimestamp(os.path.getctime(dir_path)).strftime('%Y-%m-%d %H:%M'),
+                            'auto_update': False
+                        }
+
+                        # 設定ファイルが存在する場合は情報を更新
+                        if os.path.exists(config_path):
+                            with open(config_path, 'r') as f:
+                                config = json.load(f)
+                                if 'name' in config:
+                                    report_info['name'] = config['name']
+
+                        # 自動更新設定が存在する場合はその情報を追加
+                        if os.path.exists(auto_update_path):
+                            with open(auto_update_path, 'r') as f:
+                                auto_update_config = json.load(f)
+                                report_info['auto_update'] = auto_update_config.get('enabled', False)
+
+                        reports.append(report_info)
+
                     except Exception as e:
                         print(f"Error processing report {dir_name}: {str(e)}")
                         continue
@@ -423,8 +664,97 @@ def list_reports():
         reports.sort(key=lambda x: x['created_at'], reverse=True)
         
         return render_template('reports.html', reports=reports)
+        
     except Exception as e:
         return jsonify({'error': f'レポート一覧の取得に失敗しました: {str(e)}'}), 500
+
+@app.route('/debug/scheduler')
+def debug_scheduler():
+    try:
+        scheduled_jobs = []
+        for job in scheduler.get_jobs():
+            # scheduled_timeの代わりにschedule_atを使用
+            job_info = {
+                'id': job.id,
+                'func': job.func_name,
+                'args': job.args,
+                'kwargs': job.kwargs,
+                'schedule_time': job.schedule_at.isoformat() if hasattr(job, 'schedule_at') else None,
+                'interval': job.meta.get('interval'),
+                'project_id': job.meta.get('project_id')
+            }
+            scheduled_jobs.append(job_info)
+
+        # 実行済みジョブの履歴も取得
+        completed_jobs = []
+        for key in redis_conn.keys('rq:job:*'):
+            job_data = redis_conn.hgetall(key)
+            if job_data:
+                completed_jobs.append({
+                    'id': key.decode('utf-8'),
+                    'status': job_data.get(b'status', b'unknown').decode('utf-8'),
+                    'enqueued_at': job_data.get(b'enqueued_at', b'unknown').decode('utf-8'),
+                    'started_at': job_data.get(b'started_at', b'unknown').decode('utf-8'),
+                    'ended_at': job_data.get(b'ended_at', b'unknown').decode('utf-8')
+                })
+
+        return jsonify({
+            'scheduled_jobs': scheduled_jobs,
+            'completed_jobs': completed_jobs,
+            'current_time': datetime.now(timezone.utc).isoformat()
+        })
+
+    except Exception as e:
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+@app.route('/debug/scheduler/details')
+def debug_scheduler_details():
+    try:
+        jobs_info = []
+        for job in scheduler.get_jobs():
+            jobs_info.append({
+                'id': job.id,
+                'func': job.func_name,
+                'args': job.args,
+                'next_run': job.scheduled_at.isoformat() if hasattr(job, 'scheduled_at') else None,
+                'interval': job.meta.get('interval'),
+                'project_id': job.meta.get('project_id'),
+                'queue_name': job.queue_name if hasattr(job, 'queue_name') else None,
+                'status': job.get_status() if hasattr(job, 'get_status') else None,
+                'meta': job.meta
+            })
+        
+        return jsonify({
+            'jobs': jobs_info,
+            'current_time': datetime.now(timezone.utc).isoformat(),
+            'scheduler_info': {
+                'queue_name': scheduler.queue_name,
+                'connection_info': str(scheduler.connection)
+            }
+        })
+    except Exception as e:
+        print(f"Scheduler details error: {str(e)}")
+        traceback.print_exc()
+        return jsonify({
+            'error': str(e),
+            'traceback': traceback.format_exc()
+        }), 500
+
+# デバッグ用のエラーハンドラーを追加
+@app.errorhandler(400)
+def bad_request_error(error):
+    print(f"400 Error: {error}")
+    return jsonify({
+        'error': 'Bad Request',
+        'message': str(error),
+        'debug_info': {
+            'form_data': dict(request.form),
+            'files': [f.filename for f in request.files.values()]
+        }
+    }), 400
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)

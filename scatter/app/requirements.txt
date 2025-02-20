@@ -4,3 +4,4 @@ gunicorn==21.2.0
 redis==5.0.1
 rq==1.15.1
 pandas==2.2.3
+rq-scheduler==0.13.1
