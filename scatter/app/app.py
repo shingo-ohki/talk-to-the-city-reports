@@ -27,7 +27,7 @@ app.config.update({
     'JOBS': {}
 })
 UPDATE_INTERVALS = {
-    'DEFAULT_INTERVAL_SECONDS': 60, # 86400,  # 24時間
+    'DEFAULT_INTERVAL_SECONDS': 86400,  # 24時間
     'MAX_CHECK_COUNT': 30,       # 最大チェック回数
     'MAX_ERROR_COUNT': 3,        # 最大連続エラー回数
 }
