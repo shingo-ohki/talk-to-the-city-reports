@@ -9,17 +9,12 @@ import threading
 import time
 from redis import Redis
 from rq import Queue
-from rq_scheduler import Scheduler
 import hashlib
 import pandas as pd
 import traceback  # tracebackモジュールを追加
 import sys
 from pathlib import Path
 import importlib.util
-
-# グローバル変数として定義
-init_complete = False
-initialization_error = None
 
 app = Flask(__name__, static_folder='static')
 
@@ -31,15 +26,16 @@ app.config.update({
     'MAX_CONTENT_LENGTH': 16 * 1024 * 1024,
     'JOBS': {}
 })
+UPDATE_INTERVALS = {
+    'DEFAULT_INTERVAL_SECONDS': 60, # 86400,  # 24時間
+    'MAX_CHECK_COUNT': 30,       # 最大チェック回数
+    'MAX_ERROR_COUNT': 3,        # 最大連続エラー回数
+}
 
 redis_conn = Redis(host='redis', port=6379)
 high_priority_queue = Queue('high', connection=redis_conn)    # スケジューラー用の優先キュー
 default_queue = Queue('default', connection=redis_conn)       # 通常の処理用キュー
-scheduler = Scheduler(queue=high_priority_queue, connection=redis_conn)  # スケジューラーは優先キューを使用
 q = high_priority_queue
-
-# アプリケーション初期化用のコマンドグループを作成
-init_cli = AppGroup('init')
 
 # 必要なディレクトリを作成する関数
 def ensure_directories():
@@ -51,158 +47,17 @@ def ensure_directories():
         os.makedirs(directory, exist_ok=True)
 
 def init_app():
-    """アプリケーションの初期化を非同期で実行"""
-    global init_complete, initialization_error
+    """アプリケーションの初期化"""
     try:
-        if init_complete:
-            return
-
+        # 必要なディレクトリを作成
         ensure_directories()
-
-        # スケジューラー関連の初期化を非同期キューに投入
-        q.enqueue(
-            'app.init_scheduler',
-            job_timeout=60,
-            description='Application initialization'
-        )
-
-        init_complete = True
-        print("Application initialization completed")
+        print("Application directories initialized")
+        return True
+        
     except Exception as e:
-        initialization_error = str(e)
         print(f"Error during initialization: {str(e)}")
         traceback.print_exc()
-
-
-@init_cli.command('app')
-@with_appcontext
-def init_command():
-    """アプリケーションの初期化を実行"""
-    init_app()
-
-UPDATE_INTERVALS = {
-    'DEFAULT_INTERVAL_SECONDS': 300, # 86400,  # 24時間
-    'MAX_CHECK_COUNT': 30,       # 最大チェック回数
-    'MAX_ERROR_COUNT': 3,        # 最大連続エラー回数
-}
-
-def schedule_spreadsheet_check(spreadsheet_url, config_path, project_id):
-    """定期実行ジョブのスケジューリング"""
-    try:
-        # 既存のジョブをキャンセル
-        for job in scheduler.get_jobs():
-            if job.meta.get('project_id') == project_id:
-                scheduler.cancel(job)
-
-        # 5分後の時刻を設定
-        now = datetime.now(timezone.utc)
-        next_run = now + timedelta(seconds=UPDATE_INTERVALS['DEFAULT_INTERVAL_SECONDS'])
-
-        # ジョブをスケジュール（軽量なキューイング関数を使用）
-        job = scheduler.schedule(
-            scheduled_time=next_run,
-            func='worker.queue_spreadsheet_check',  # キューイング用の軽量な関数
-            args=[spreadsheet_url, config_path, project_id],
-            interval=UPDATE_INTERVALS['DEFAULT_INTERVAL_SECONDS'],
-            repeat=UPDATE_INTERVALS['MAX_CHECK_COUNT'],
-            queue_name='high',  # 優先キューを使用
-            meta={
-                'project_id': project_id,
-                'interval': UPDATE_INTERVALS['DEFAULT_INTERVAL_SECONDS'],
-                'next_run': next_run.isoformat(),
-                'repeat': UPDATE_INTERVALS['MAX_CHECK_COUNT']
-            }
-        )
-
-        print(f"Scheduled job {job.id} for project {project_id}")
-        print(f"First run scheduled at: {next_run.isoformat()}")
-        return job.id
-
-    except Exception as e:
-        print(f"Error scheduling job: {str(e)}")
-        traceback.print_exc()
-        raise
-
-def queue_spreadsheet_check(spreadsheet_url, config_path, project_id):
-    """実際の更新チェック処理をデフォルトキューに投入"""
-    try:
-        # 更新チェック処理を通常キューに投入
-        job = default_queue.enqueue(
-            'worker.check_spreadsheet_updates',
-            spreadsheet_url,
-            config_path,
-            project_id,
-            job_timeout=300
-        )
-        print(f"Queued spreadsheet check job {job.id} for project {project_id}")
-        return job.id
-    except Exception as e:
-        print(f"Error queueing spreadsheet check: {str(e)}")
-        traceback.print_exc()
-        raise
-
-# 2. リストア関数を定義
-def restore_scheduled_jobs():
-    """アプリケーション起動時に自動更新ジョブを復元する"""
-    try:
-        config_dir = app.config['CONFIG_FOLDER']
-        for filename in os.listdir(config_dir):
-            if filename.endswith('_auto_update.json'):
-                project_id = filename.replace('_auto_update.json', '')
-                auto_update_path = os.path.join(config_dir, filename)
-                config_path = os.path.join(config_dir, f"{project_id}.json")
-
-                with open(auto_update_path, 'r') as f:
-                    auto_update_config = json.load(f)
-
-                if auto_update_config.get('enabled', False):
-                    schedule_spreadsheet_check(
-                        auto_update_config['spreadsheet_url'],
-                        config_path,
-                        project_id
-                    )
-                    print(f"Restored scheduled job for project: {project_id}")
-
-    except Exception as e:
-        print(f"Error restoring scheduled jobs: {str(e)}")
-        traceback.print_exc()
-
-def init_scheduler():
-    """スケジューラーの初期化を行う"""
-    try:
-        # 既存のジョブをすべてクリア
-        for job in scheduler.get_jobs():
-            scheduler.cancel(job)
-
-        config_dir = app.config['CONFIG_FOLDER']
-        processed_projects = set()
-
-        for filename in os.listdir(config_dir):
-            if filename.endswith('_auto_update.json'):
-                project_id = filename.replace('_auto_update.json', '')
-
-                # 重複チェック
-                if project_id in processed_projects:
-                    print(f"Skipping duplicate project: {project_id}")
-                    continue
-
-                auto_update_path = os.path.join(config_dir, filename)
-                config_path = os.path.join(config_dir, f"{project_id}.json")
-
-                with open(auto_update_path, 'r') as f:
-                    auto_update_config = json.load(f)
-
-                if auto_update_config.get('enabled', False):
-                    # 直接スケジュール（非同期キューを使用しない）
-                    schedule_spreadsheet_check(
-                        auto_update_config['spreadsheet_url'],
-                        config_path,
-                        project_id
-                    )
-                    print(f"Restored scheduled job for project: {project_id}")
-    except Exception as e:
-        print(f"Error in scheduler initialization: {str(e)}")
-        traceback.print_exc()
+        return False
 
 def create_config(filename, output_dir, custom_config=None):
     """設定ファイルを作成する関数"""
@@ -309,7 +164,7 @@ def run_pipeline(config_path, job_id):
             os.remove(status_file)
 
         # パイプライン処理をキューに投入
-        if process_pipeline(config_path):
+        if process_pipeline(config_path, job_id=job_id):
             return True
         return False
 
@@ -351,13 +206,14 @@ def process_input_data(data_source):
 
     return input_path, output_dir, timestamp
 
-def process_pipeline(config_path):
+def process_pipeline(config_path, job_id=None):
     """パイプライン処理をワーカーにエンキューする関数"""
     try:
         # RQジョブをデフォルトキューにエンキュー
         job = default_queue.enqueue(
             'worker.process_pipeline',
             config_path,
+            job_id=job_id,
             job_timeout=3600,
             result_ttl=86400
         )
@@ -369,40 +225,39 @@ def process_pipeline(config_path):
         traceback.print_exc()
         raise
 
+def handle_error(e: Exception, context: str = "") -> tuple:
+    """共通のエラーハンドリング処理
+    
+    Args:
+        e: 発生した例外
+        context: エラーが発生した文脈を示す文字列
+    
+    Returns:
+        tuple: (JSONレスポンス, HTTPステータスコード)
+    """
+    error_message = f"{context}: {str(e)}" if context else str(e)
+    print(f"Error: {error_message}")
+    traceback.print_exc()
+    
+    return jsonify({
+        'error': error_message,
+        'status': 'error',
+        'timestamp': datetime.now().isoformat()
+    }), 500
+
 @app.route('/')
 def index():
-    if not init_complete:
-        # 初回アクセス時に初期化
-        init_app()
-
-    if initialization_error:
+    if not init_app():
         return render_template(
             'index.html',
             error=True,
-            message=f"初期化中にエラーが発生しました: {initialization_error}"
+            message="初期化中にエラーが発生しました"
         )
-    elif not init_complete:
-        return render_template(
-            'index.html',
-            initializing=True,
-            message="アプリケーションを初期化中です..."
-        )
-
     return render_template('index.html')
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
     try:
-        # リクエストの内容を詳細にログ出出力
-        print("=== Request Debug ===")
-        print("Form Data:")
-        for key, value in request.form.items():
-            print(f"{key}: {value}")
-        print("\nFiles:")
-        for key, file in request.files.items():
-            print(f"{key}: {file.filename if file else None}")
-        print("===================")
-        
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
         output_dir = f"project_{timestamp}"
         job_id = f"job_{timestamp}"  # job_idをここで定義
@@ -420,7 +275,6 @@ def upload_file():
             config_content = config_file.read().decode('utf-8')
             try:
                 custom_config = json.loads(config_content)
-                print(f"Loaded custom config: {custom_config}")
             except json.JSONDecodeError as e:
                 raise ValueError(f"設定ファイルのJSONフォーマットが不正です: {str(e)}")
 
@@ -502,7 +356,8 @@ def upload_file():
                         "check_count": 0,
                         "max_checks": UPDATE_INTERVALS['MAX_CHECK_COUNT'],
                         "error_count": 0,
-                        "check_interval": UPDATE_INTERVALS['DEFAULT_INTERVAL_SECONDS']
+                        "check_interval": UPDATE_INTERVALS['DEFAULT_INTERVAL_SECONDS'],
+                        "project_id": project_id
                     }
                     
                     auto_update_path = os.path.join(
@@ -512,10 +367,6 @@ def upload_file():
                     with open(auto_update_path, 'w', encoding='utf-8') as f:
                         json.dump(auto_update_config, f, indent=2, ensure_ascii=False)
                     print(f"Saved auto-update config to: {auto_update_path}")
-
-                    # 自動更新のスケジュール
-                    schedule_spreadsheet_check(spreadsheet_url, config_path, project_id)
-                    print("Scheduled auto-update check")
 
             except Exception as e:
                 print(f"Error processing spreadsheet: {str(e)}")
@@ -537,9 +388,7 @@ def upload_file():
         })
 
     except Exception as e:
-        print(f"Upload error: {str(e)}")
-        traceback.print_exc()  # スタックトレースを出力
-        return jsonify({'error': f'エラーが発生しました: {str(e)}'}), 500
+        return handle_error(e, "ファイルアップロード処理でエラーが発生しました")
 
 # 全ステップのリストを定義
 PIPELINE_STEPS = [
@@ -641,12 +490,7 @@ def job_status(job_id):
         return jsonify(job)
         
     except Exception as e:
-        print(f"Job status error: {str(e)}")
-        traceback.print_exc()
-        return jsonify({
-            'status': 'error',
-            'error': str(e)
-        }), 500
+        return handle_error(e, "ジョブステータスの取得に失敗しました")
 
 @app.route('/report/<path:path>')
 def serve_static_report(path):
@@ -732,80 +576,7 @@ def list_reports():
         return render_template('reports.html', reports=reports)
         
     except Exception as e:
-        return jsonify({'error': f'レポート一覧の取得に失敗しました: {str(e)}'}), 500
-
-@app.route('/debug/scheduler')
-def debug_scheduler():
-    try:
-        scheduled_jobs = []
-        for job in scheduler.get_jobs():
-            job_info = {
-                'id': job.id,
-                'func': job.func_name,
-                'args': job.args,
-                'kwargs': job.kwargs,
-                'scheduled_time': job.scheduled_time.isoformat() if hasattr(job, 'scheduled_time') else None,
-                'interval': job.meta.get('interval'),
-                'project_id': job.meta.get('project_id')
-            }
-            scheduled_jobs.append(job_info)
-
-        # 実行済みジョブの履歴も取得
-        completed_jobs = []
-        for key in redis_conn.keys('rq:job:*'):
-            job_data = redis_conn.hgetall(key)
-            if job_data:
-                completed_jobs.append({
-                    'id': key.decode('utf-8'),
-                    'status': job_data.get(b'status', b'unknown').decode('utf-8'),
-                    'enqueued_at': job_data.get(b'enqueued_at', b'unknown').decode('utf-8'),
-                    'started_at': job_data.get(b'started_at', b'unknown').decode('utf-8'),
-                    'ended_at': job_data.get(b'ended_at', b'unknown').decode('utf-8')
-                })
-
-        return jsonify({
-            'scheduled_jobs': scheduled_jobs,
-            'completed_jobs': completed_jobs,
-            'current_time': datetime.now(timezone.utc).isoformat()
-        })
-
-    except Exception as e:
-        return jsonify({
-            'error': str(e),
-            'traceback': traceback.format_exc()
-        }), 500
-
-@app.route('/debug/scheduler/details')
-def debug_scheduler_details():
-    try:
-        jobs_info = []
-        for job in scheduler.get_jobs():
-            # jobのscheduled_timeはRQがjsonシリアライズ可能な形式で保存している
-            scheduled_time = job.meta.get('next_run')  # metaから次回実行時刻を取得
-
-            jobs_info.append({
-                'id': job.id,
-                'func': job.func_name,
-                'args': job.args,
-                'scheduled_time': scheduled_time,  # metaから取得した時刻を使用
-                'interval': job.meta.get('interval'),
-                'meta': job.meta
-            })
-        
-        return jsonify({
-            'jobs': jobs_info,
-            'current_time': datetime.now(timezone.utc).isoformat(),
-            'scheduler_info': {
-                'connection_info': str(scheduler.connection)
-            }
-        })
-    except Exception as e:
-        print(f"Scheduler details error: {str(e)}")
-        traceback.print_exc()
-        return jsonify({
-            'error': str(e),
-            'traceback': traceback.format_exc()
-        }), 500
+        return handle_error(e, "レポート一覧の取得に失敗しました")
 
 # デバッグ用のエラーハンドラーを追加
 @app.errorhandler(400)
