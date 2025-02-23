@@ -30,10 +30,17 @@
                             <tbody>
                                 {% for report in reports %}
                                     <tr>
-                                        <td>{{ report.name }}</td>
+                                        <td>
+                                            {{ report.name }}
+                                            {% if report.auto_update %}
+                                                <span class="badge bg-info ms-2" title="毎日自動更新">🔄 自動更新</span>
+                                            {% endif %}
+                                        </td>
                                         <td>{{ report.created_at }}</td>
                                         <td class="text-end">
-                                            <a href="{{ report.url }}" class="btn btn-primary btn-sm" target="_blank">レポートを表示</a>
+                                            <a href="{{ report.url }}" class="btn btn-primary btn-sm" target="_blank">
+                                                <span class="d-none d-md-inline">レポートを</span>表示
+                                            </a>
                                         </td>
                                     </tr>
                                 {% endfor %}
