@@ -255,42 +255,132 @@ def index():
         )
     return render_template('index.html')
 
+def initialize_job_params():
+    """ジョブパラメータを初期化する関数
+
+    Returns:
+        tuple: (timestamp, output_dir, job_id)
+    """
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    output_dir = f"project_{timestamp}"
+    job_id = f"job_{timestamp}"
+
+    return timestamp, output_dir, job_id
+
+def process_custom_config(request):
+    """設定ファイルとフォームからのプロンプト設定を処理する
+
+    Args:
+        request: Flaskリクエストオブジェクト
+
+    Returns:
+        dict: 処理されたカスタム設定
+
+    Raises:
+        ValueError: 設定ファイルのJSONフォーマットが不正な場合
+    """
+    custom_config = {}
+
+    # 設定ファイルの処理
+    if request.files.get('config'):
+        config_file = request.files['config']
+        config_content = config_file.read().decode('utf-8')
+        try:
+            custom_config = json.loads(config_content)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"設定ファイルのJSONフォーマットが不正です: {str(e)}")
+
+    # フォームからのプロンプト設定の追加
+    for prompt_type in ['extraction', 'labelling', 'takeaways', 'overview']:
+        if request.form.get(f'{prompt_type}Prompt'):
+            if prompt_type not in custom_config:
+                custom_config[prompt_type] = {}
+            custom_config[prompt_type]['prompt'] = request.form[f'{prompt_type}Prompt']
+
+    return custom_config
+
+def process_spreadsheet_data(spreadsheet_url, base_filename, output_dir, custom_config):
+    """スプレッドシートURLからデータを取得して処理する
+
+    Args:
+        spreadsheet_url: スプレッドシートのURL
+        base_filename: 保存するCSVのベースファイル名
+        output_dir: 出力ディレクトリ名
+        custom_config: カスタム設定
+
+    Returns:
+        tuple: (DataFrame, ファイルパス, 設定パス)
+    """
+    print(f"Processing spreadsheet: {spreadsheet_url}")
+
+    # スプレッドシートからデータを取得
+    df = get_spreadsheet_data(spreadsheet_url)
+    print(f"Retrieved data shape: {df.shape}")
+
+    # CSVファイルを保存
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_filename}.csv")
+    df.to_csv(filepath, index=False)
+    print(f"Saved CSV to: {filepath}")
+
+    # メイン設定を作成
+    config = create_config(base_filename, output_dir, custom_config)
+    config_path = os.path.join(app.config['CONFIG_FOLDER'], f"{output_dir}.json")
+    with open(config_path, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
+
+    return df, filepath, config_path
+
+def setup_auto_update(spreadsheet_url, df, output_dir):
+    """自動更新設定を作成し保存する
+
+    Args:
+        spreadsheet_url: スプレッドシートのURL
+        df: 取得したデータのDataFrame
+        output_dir: 出力ディレクトリ名
+
+    Returns:
+        dict: 自動更新設定
+    """
+    auto_update_config = {
+        "enabled": True,
+        "spreadsheet_url": spreadsheet_url,
+        "content_hash": hashlib.md5(df.to_csv().encode()).hexdigest(),
+        "last_update": datetime.now().isoformat(),
+        "check_count": 0,
+        "max_checks": UPDATE_INTERVALS['MAX_CHECK_COUNT'],
+        "error_count": 0,
+        "check_interval": UPDATE_INTERVALS['DEFAULT_INTERVAL_SECONDS'],
+        "project_id": output_dir
+    }
+
+    auto_update_path = os.path.join(
+        app.config['CONFIG_FOLDER'],
+        f"{output_dir}_auto_update.json"
+    )
+    with open(auto_update_path, 'w', encoding='utf-8') as f:
+        json.dump(auto_update_config, f, indent=2, ensure_ascii=False)
+    print(f"Saved auto-update config to: {auto_update_path}")
+
+    return auto_update_config
+
+# upload_file関数を更新
 @app.route('/upload', methods=['POST'])
 def upload_file():
     try:
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        output_dir = f"project_{timestamp}"
-        job_id = f"job_{timestamp}"  # job_idをここで定義
-        project_id = output_dir      # project_idをここで定義
-        custom_config = {}
+        # 1. 基本パラメータの初期化
+        timestamp, output_dir, job_id = initialize_job_params()
+        project_id = output_dir
         base_filename = output_dir
         config_path = None
 
-        # カスタム設定の処理を追加
-        custom_config = {}
+        # 2. カスタム設定の処理
+        custom_config = process_custom_config(request)
         
-        # 設定ファイルの処理
-        if request.files.get('config'):
-            config_file = request.files['config']
-            config_content = config_file.read().decode('utf-8')
-            try:
-                custom_config = json.loads(config_content)
-            except json.JSONDecodeError as e:
-                raise ValueError(f"設定ファイルのJSONフォーマットが不正です: {str(e)}")
-
-        # フォームからのプロンプト設定の追加
-        for prompt_type in ['extraction', 'labelling', 'takeaways', 'overview']:
-            if request.form.get(f'{prompt_type}Prompt'):
-                if prompt_type not in custom_config:
-                    custom_config[prompt_type] = {}
-                custom_config[prompt_type]['prompt'] = request.form[f'{prompt_type}Prompt']
-
-        # スプレッドシートURLと自動更新の処理
+        # 3. スプレッドシートURLと自動更新の処理
         if request.form.get('spreadsheet_url'):
             try:
                 spreadsheet_url = request.form['spreadsheet_url']
                 auto_update = request.form.get('autoUpdate') == 'true'
-                print(f"Processing spreadsheet: {spreadsheet_url}")
                 print(f"Auto update enabled: {auto_update}")
 
                 if auto_update:
@@ -332,47 +422,21 @@ def upload_file():
                     'progress': {'current': 0, 'total': 100}
                 }
 
-                # スプレッドシートからデータを取得
-                df = get_spreadsheet_data(spreadsheet_url)
-                print(f"Retrieved data shape: {df.shape}")
-                
-                # CSVファイルを保存
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_filename}.csv")
-                df.to_csv(filepath, index=False)
-                print(f"Saved CSV to: {filepath}")
+                # 新しい関数を使用してスプレッドシートデータを処理
+                df, filepath, config_path = process_spreadsheet_data(
+                    spreadsheet_url, base_filename, output_dir, custom_config
+                )
 
-                # メイン設定を作成
-                config = create_config(base_filename, output_dir, custom_config)
-                config_path = os.path.join(app.config['CONFIG_FOLDER'], f"{output_dir}.json")
-                with open(config_path, 'w', encoding='utf-8') as f:
-                    json.dump(config, f, indent=2, ensure_ascii=False)
-
+                # 自動更新設定を処理
                 if auto_update:
-                    auto_update_config = {
-                        "enabled": True,
-                        "spreadsheet_url": spreadsheet_url,
-                        "content_hash": hashlib.md5(df.to_csv().encode()).hexdigest(),
-                        "last_update": datetime.now().isoformat(),
-                        "check_count": 0,
-                        "max_checks": UPDATE_INTERVALS['MAX_CHECK_COUNT'],
-                        "error_count": 0,
-                        "check_interval": UPDATE_INTERVALS['DEFAULT_INTERVAL_SECONDS'],
-                        "project_id": project_id
-                    }
-                    
-                    auto_update_path = os.path.join(
-                        app.config['CONFIG_FOLDER'],
-                        f"{output_dir}_auto_update.json"
-                    )
-                    with open(auto_update_path, 'w', encoding='utf-8') as f:
-                        json.dump(auto_update_config, f, indent=2, ensure_ascii=False)
-                    print(f"Saved auto-update config to: {auto_update_path}")
+                    setup_auto_update(spreadsheet_url, df, output_dir)
 
             except Exception as e:
                 print(f"Error processing spreadsheet: {str(e)}")
                 traceback.print_exc()  # スタックトレースを出力
                 raise
 
+        # 4. パイプライン処理をキューに追加
         default_queue.enqueue(
             'worker.process_pipeline',
             config_path,
