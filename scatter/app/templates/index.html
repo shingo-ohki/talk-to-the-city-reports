@@ -34,7 +34,7 @@
                     ご自由にお使いください。
                 </div>
 
-                <form id="uploadForm">
+                <form id="uploadForm" enctype="multipart/form-data">
                     <div class="card mb-3">
                         <div class="card-header bg-light">
                             <h5 class="card-title mb-0">意見データ（必須）</h5>
@@ -45,7 +45,7 @@
                                     <label for="fileInput" class="form-label">CSVファイル:</label>
                                     <a href="/sample" download="sample_input.csv" class="text-primary small">サンプルCSVファイル</a>
                                 </div>
-                                <input type="file" id="fileInput" accept=".csv" class="form-control">
+                                <input type="file" id="fileInput" name="fileInput" accept=".csv" class="form-control">
                             </div>
 
                             <div class="mb-3">

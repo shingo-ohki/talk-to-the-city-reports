@@ -173,7 +173,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // 必須データの追加
             if (file) {
-                formData.append('file', file);
+                formData.append('fileInput', file);
             }
             if (spreadsheetUrl) {
                 formData.append('spreadsheet_url', spreadsheetUrl);
