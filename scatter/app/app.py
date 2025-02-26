@@ -363,6 +363,84 @@ def setup_auto_update(spreadsheet_url, df, output_dir):
 
     return auto_update_config
 
+def process_csv_file(uploaded_file, base_filename, output_dir, custom_config):
+    """アップロードされたCSVファイルを処理する
+
+    Args:
+        uploaded_file: アップロードされたCSVファイル
+        base_filename: 保存するファイルの基本名
+        output_dir: 出力ディレクトリ名
+        custom_config: カスタム設定
+
+    Returns:
+        tuple: (DataFrameまたはNone, ファイルパス, 設定パス)
+    """
+    print(f"Processing uploaded CSV file: {uploaded_file.filename}")
+
+    # CSVファイルを一時保存
+    filename = secure_filename(uploaded_file.filename)
+    filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_filename}.csv")
+    uploaded_file.save(filepath)
+    print(f"Saved CSV to: {filepath}")
+
+    # 設定ファイルを作成
+    config = create_config(base_filename, output_dir, custom_config)
+    config_path = os.path.join(app.config['CONFIG_FOLDER'], f"{output_dir}.json")
+    with open(config_path, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
+
+    return None, filepath, config_path
+
+def initialize_job(job_id, project_id, auto_update=False):
+    """ジョブ情報を初期化する
+
+    Args:
+        job_id: ジョブID
+        project_id: プロジェクトID
+        auto_update: 自動更新の有効/無効
+
+    Returns:
+        dict: ジョブ情報
+    """
+    job_info = {
+        'status': 'queued',
+        'auto_update': auto_update,
+        'project_id': project_id,
+        'started_at': datetime.now().isoformat(),
+        'current_step': 'initialization',
+        'progress': {'current': 0, 'total': 100}
+    }
+
+    # グローバルジョブ情報に追加
+    app.config['JOBS'][job_id] = job_info
+
+    return job_info
+
+def enqueue_pipeline_job(config_path, job_id):
+    """パイプライン処理ジョブをキューに追加する
+
+    Args:
+        config_path: 設定ファイルのパス
+        job_id: ジョブID
+
+    Returns:
+        bool: 成功したかどうか
+    """
+    try:
+        job = default_queue.enqueue(
+            'worker.process_pipeline',
+            config_path,
+            job_id=job_id,
+            job_timeout=3600,
+            result_ttl=86400
+        )
+        print(f"Queued pipeline job {job.id} for config {config_path}")
+        return True
+    except Exception as e:
+        print(f"Error enqueuing pipeline job: {str(e)}")
+        traceback.print_exc()
+        raise
+
 # upload_file関数を更新
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -376,73 +454,78 @@ def upload_file():
         # 2. カスタム設定の処理
         custom_config = process_custom_config(request)
         
-        # 3. スプレッドシートURLと自動更新の処理
+        # 3. データソースの処理（スプレッドシートまたはCSVファイル）
         if request.form.get('spreadsheet_url'):
-            try:
-                spreadsheet_url = request.form['spreadsheet_url']
-                auto_update = request.form.get('autoUpdate') == 'true'
-                print(f"Auto update enabled: {auto_update}")
+            # スプレッドシートURLからデータを処理
+            spreadsheet_url = request.form['spreadsheet_url']
+            auto_update = request.form.get('autoUpdate') == 'true'
+            print(f"Auto update enabled: {auto_update}")
 
-                if auto_update:
-                    # 設定ファイルの内容、プロンプト、URLのみでハッシュを生成
-                    unique_config = {
-                        'spreadsheet_url': spreadsheet_url,
-                        'custom_config': custom_config,
-                        'prompts': {
-                            'extraction': request.form.get('extractionPrompt', ''),
-                            'labelling': request.form.get('labellingPrompt', ''),
-                            'takeaways': request.form.get('takeawaysPrompt', ''),
-                            'overview': request.form.get('overviewPrompt', '')
-                        }
+            # 自動更新の場合は特別な処理
+            if auto_update:
+                # 設定ファイルの内容、プロンプト、URLのみでハッシュを生成
+                unique_config = {
+                    'spreadsheet_url': spreadsheet_url,
+                    'custom_config': custom_config,
+                    'prompts': {
+                        'extraction': request.form.get('extractionPrompt', ''),
+                        'labelling': request.form.get('labellingPrompt', ''),
+                        'takeaways': request.form.get('takeawaysPrompt', ''),
+                        'overview': request.form.get('overviewPrompt', '')
                     }
-                    
-                    # アップロードされた設定ファイルの内容を追加
-                    if request.files.get('config'):
-                        config_file = request.files['config']
-                        config_content = config_file.read().decode('utf-8')
-                        unique_config['uploaded_config'] = config_content
-                    
-                    # ユニークなハッシュを生成（タイムスタンプを除外）
-                    unique_hash = hashlib.md5(
-                        json.dumps(unique_config, sort_keys=True).encode()
-                    ).hexdigest()[:8]
-                    
-                    project_id = f"auto_{unique_hash}"
-                    output_dir = project_id
-                    base_filename = output_dir
-                    job_id = f"job_{project_id}"
-
-                # RQジョブ情報を設定
-                app.config['JOBS'][job_id] = {
-                    'status': 'queued',
-                    'auto_update': auto_update if request.form.get('spreadsheet_url') else False,
-                    'project_id': project_id,
-                    'started_at': datetime.now().isoformat(),
-                    'current_step': 'initialization',
-                    'progress': {'current': 0, 'total': 100}
                 }
 
-                # 新しい関数を使用してスプレッドシートデータを処理
-                df, filepath, config_path = process_spreadsheet_data(
-                    spreadsheet_url, base_filename, output_dir, custom_config
-                )
+                # アップロードされた設定ファイルの内容を追加
+                if request.files.get('config'):
+                    config_file = request.files['config']
+                    config_content = config_file.read().decode('utf-8')
+                    unique_config['uploaded_config'] = config_content
 
-                # 自動更新設定を処理
-                if auto_update:
-                    setup_auto_update(spreadsheet_url, df, output_dir)
+                # ユニークなハッシュを生成（タイムスタンプを除外）
+                unique_hash = hashlib.md5(
+                    json.dumps(unique_config, sort_keys=True).encode()
+                ).hexdigest()[:8]
 
-            except Exception as e:
-                print(f"Error processing spreadsheet: {str(e)}")
-                traceback.print_exc()  # スタックトレースを出力
-                raise
+                project_id = f"auto_{unique_hash}"
+                output_dir = project_id
+                base_filename = output_dir
+                job_id = f"job_{project_id}"
+
+            # ジョブ情報の初期化
+            initialize_job(job_id, project_id, auto_update)
+
+            # スプレッドシートデータの処理
+            df, filepath, config_path = process_spreadsheet_data(
+                spreadsheet_url, base_filename, output_dir, custom_config
+            )
+
+            # 自動更新設定を保存
+            if auto_update:
+                setup_auto_update(spreadsheet_url, df, output_dir)
+
+        elif request.files.get('fileInput'):
+            # CSVファイルのアップロード処理
+            uploaded_file = request.files['fileInput']
+
+            # 基本的なファイルチェック
+            if uploaded_file.filename == '':
+                return jsonify({'error': 'ファイルが選択されていません'}), 400
+
+            if not uploaded_file.filename.endswith('.csv'):
+                return jsonify({'error': '拡張子がCSVではありません'}), 400
+
+            # ジョブ情報の初期化
+            initialize_job(job_id, project_id, False)
+
+            # CSVファイルの処理
+            _, filepath, config_path = process_csv_file(
+                uploaded_file, base_filename, output_dir, custom_config
+            )
+        else:
+            raise ValueError("スプレッドシートURLまたはCSVファイルのいずれかを指定してください")
 
         # 4. パイプライン処理をキューに追加
-        default_queue.enqueue(
-            'worker.process_pipeline',
-            config_path,
-            job_id=job_id,
-            job_timeout=3600
-        )
+        enqueue_pipeline_job(config_path, job_id)
         
         return jsonify({
             'success': True,
