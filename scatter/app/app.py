@@ -416,25 +416,34 @@ def initialize_job(job_id, project_id, auto_update=False):
 
     return job_info
 
-def enqueue_pipeline_job(config_path, job_id):
-    """パイプライン処理ジョブをキューに追加する
-
-    Args:
-        config_path: 設定ファイルのパス
-        job_id: ジョブID
-
-    Returns:
-        bool: 成功したかどうか
-    """
+def enqueue_pipeline_job(config_path, job_id, job_meta=None):
     try:
+        meta = job_meta or {}
+
+        # APIキーが含まれる場合は安全なログ出力
+        if meta and 'env' in meta and 'OPENAI_API_KEY' in meta['env']:
+            safe_meta = meta.copy()
+            safe_meta['env'] = {k: ('***' if k == 'OPENAI_API_KEY' else v) for k, v in safe_meta['env'].items()}
+            print(f"Job metadata with sanitized env vars: {safe_meta}")
+
+        # APIキーを含むメタデータを持つジョブはTTLを短く設定
+        ttl_seconds = 1800  # 30分
+        result_ttl_seconds = 86400  # 1日
+
+        if job_meta and 'env' in job_meta and 'OPENAI_API_KEY' in job_meta['env']:
+            ttl_seconds = 300  # キーを含む場合は5分だけ保持
+
         job = default_queue.enqueue(
             'worker.process_pipeline',
             config_path,
             job_id=job_id,
             job_timeout=3600,
-            result_ttl=86400
+            ttl=ttl_seconds,  # ジョブ自体の保持期間
+            result_ttl=result_ttl_seconds,
+            meta=meta
         )
         print(f"Queued pipeline job {job.id} for config {config_path}")
+
         return True
     except Exception as e:
         print(f"Error enqueuing pipeline job: {str(e)}")
@@ -546,9 +555,21 @@ def upload_file():
 
             raise ValueError("スプレッドシートURLまたはCSVファイルのいずれかを指定してください")
 
+        # OpenAI APIキーの取得
+        openai_api_key = request.form.get('openaiApiKey')
+
+        # 設定ファイルからモデル情報を取得
+        model_name = custom_config.get('model', 'local:pakachan/elyza-llama3-8b:latest')
+        use_openai = model_name.startswith('gpt-') or model_name.startswith('text-')
+
+        # 環境変数設定（メタデータとして渡す）
+        job_meta = {}
+        if use_openai and openai_api_key:
+            job_meta['env'] = {'OPENAI_API_KEY': openai_api_key}
+
         # 4. パイプライン処理をキューに追加
-        enqueue_pipeline_job(config_path, job_id)
-        
+        enqueue_pipeline_job(config_path, job_id, job_meta)
+
         return jsonify({
             'success': True,
             'message': '処理を開始しました',

@@ -170,6 +170,26 @@
                         </div>
                     </div>
 
+                    <!-- OpenAI APIキーセクション -->
+                    <div class="card mb-3" id="apiKeySection">
+                      <div class="card-header bg-light" role="button" data-bs-toggle="collapse" data-bs-target="#apiKeyCollapse" aria-expanded="false" aria-controls="apiKeyCollapse">
+                        <div class="d-flex justify-content-between align-items-center">
+                          <h5 class="card-title mb-0">OpenAI APIキー（OpenAIモデル使用時のみ）</h5>
+                          <span class="toggle-icon">▼</span>
+                        </div>
+                      </div>
+                      <div id="apiKeyCollapse" class="collapse card-body">
+                        <div class="mb-3">
+                          <input type="password" class="form-control" id="openaiApiKey" name="openaiApiKey" 
+                                 placeholder="sk-..." autocomplete="off">
+                          <div class="form-text">
+                            <span class="text-danger">※APIキーはサーバーに保存されず、このレポート生成処理でのみ使用されます</span><br>
+                            <span>※OpenAIモデル（gpt-4o、gpt-3.5-turboなど）を使用する場合のみ必要です</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                     <div class="text-center">
                         <button type="submit" class="btn btn-primary px-4">レポートを生成する</button>
                     </div>
