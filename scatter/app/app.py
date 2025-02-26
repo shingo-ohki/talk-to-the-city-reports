@@ -441,6 +441,46 @@ def enqueue_pipeline_job(config_path, job_id):
         traceback.print_exc()
         raise
 
+def generate_unique_project_id(spreadsheet_url, custom_config, request):
+    """自動更新用の一意のプロジェクトIDを生成する
+
+    Args:
+        spreadsheet_url: スプレッドシートのURL
+        custom_config: カスタム設定
+        request: リクエストオブジェクト
+
+    Returns:
+        tuple: (project_id, output_dir, job_id)
+    """
+    # 設定ファイルの内容、プロンプト、URLのみでハッシュを生成
+    unique_config = {
+        'spreadsheet_url': spreadsheet_url,
+        'custom_config': custom_config,
+        'prompts': {
+            'extraction': request.form.get('extractionPrompt', ''),
+            'labelling': request.form.get('labellingPrompt', ''),
+            'takeaways': request.form.get('takeawaysPrompt', ''),
+            'overview': request.form.get('overviewPrompt', '')
+        }
+    }
+
+    # アップロードされた設定ファイルの内容を追加
+    if request.files.get('config'):
+        config_file = request.files['config']
+        config_content = config_file.read().decode('utf-8')
+        unique_config['uploaded_config'] = config_content
+
+    # ユニークなハッシュを生成（タイムスタンプを除外）
+    unique_hash = hashlib.md5(
+        json.dumps(unique_config, sort_keys=True).encode()
+    ).hexdigest()[:8]
+
+    project_id = f"auto_{unique_hash}"
+    output_dir = project_id
+    job_id = f"job_{project_id}"
+
+    return project_id, output_dir, job_id
+
 # upload_file関数を更新
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -463,33 +503,10 @@ def upload_file():
 
             # 自動更新の場合は特別な処理
             if auto_update:
-                # 設定ファイルの内容、プロンプト、URLのみでハッシュを生成
-                unique_config = {
-                    'spreadsheet_url': spreadsheet_url,
-                    'custom_config': custom_config,
-                    'prompts': {
-                        'extraction': request.form.get('extractionPrompt', ''),
-                        'labelling': request.form.get('labellingPrompt', ''),
-                        'takeaways': request.form.get('takeawaysPrompt', ''),
-                        'overview': request.form.get('overviewPrompt', '')
-                    }
-                }
-
-                # アップロードされた設定ファイルの内容を追加
-                if request.files.get('config'):
-                    config_file = request.files['config']
-                    config_content = config_file.read().decode('utf-8')
-                    unique_config['uploaded_config'] = config_content
-
-                # ユニークなハッシュを生成（タイムスタンプを除外）
-                unique_hash = hashlib.md5(
-                    json.dumps(unique_config, sort_keys=True).encode()
-                ).hexdigest()[:8]
-
-                project_id = f"auto_{unique_hash}"
-                output_dir = project_id
+                project_id, output_dir, job_id = generate_unique_project_id(
+                    spreadsheet_url, custom_config, request
+                )
                 base_filename = output_dir
-                job_id = f"job_{project_id}"
 
             # ジョブ情報の初期化
             initialize_job(job_id, project_id, auto_update)
