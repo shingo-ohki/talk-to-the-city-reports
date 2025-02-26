@@ -520,14 +520,11 @@ def upload_file():
             if auto_update:
                 setup_auto_update(spreadsheet_url, df, output_dir)
 
-        elif request.files.get('fileInput'):
+        elif 'fileInput' in request.files and request.files['fileInput'].filename:
             # CSVファイルのアップロード処理
             uploaded_file = request.files['fileInput']
 
             # 基本的なファイルチェック
-            if uploaded_file.filename == '':
-                return jsonify({'error': 'ファイルが選択されていません'}), 400
-
             if not uploaded_file.filename.endswith('.csv'):
                 return jsonify({'error': '拡張子がCSVではありません'}), 400
 
@@ -539,6 +536,14 @@ def upload_file():
                 uploaded_file, base_filename, output_dir, custom_config
             )
         else:
+            # デバッグ情報を追加
+            print("No valid data source found")
+            print(f"Form data: {request.form}")
+            print(f"Files: {request.files}")
+
+            for key in request.files:
+                print(f"File key: {key}, filename: {request.files[key].filename}")
+
             raise ValueError("スプレッドシートURLまたはCSVファイルのいずれかを指定してください")
 
         # 4. パイプライン処理をキューに追加
@@ -563,30 +568,28 @@ PIPELINE_STEPS = [
 @app.route('/status/<job_id>')
 def job_status(job_id):
     try:
-        if job_id not in app.config['JOBS']:
-            # 自動更新ジョブの場合は、JOBSに追加
-            if job_id.startswith('job_auto_'):
-                project_id = None
-                # 全ての自動更新設定をチェック
-                for filename in os.listdir(app.config['CONFIG_FOLDER']):
-                    if filename.endswith('_auto_update.json'):
-                        auto_update_path = os.path.join(app.config['CONFIG_FOLDER'], filename)
-                        with open(auto_update_path) as f:
-                            auto_update_config = json.load(f)
-                            if auto_update_config.get('current_job_id') == job_id:
-                                project_id = filename.replace('_auto_update.json', '')
-                                break
+        if (job_id not in app.config['JOBS']) and job_id.startswith('job_auto_'):
+            project_id = None
+            # 全ての自動更新設定をチェック
+            for filename in os.listdir(app.config['CONFIG_FOLDER']):
+                if filename.endswith('_auto_update.json'):
+                    auto_update_path = os.path.join(app.config['CONFIG_FOLDER'], filename)
+                    with open(auto_update_path) as f:
+                        auto_update_config = json.load(f)
+                        if auto_update_config.get('current_job_id') == job_id:
+                            project_id = filename.replace('_auto_update.json', '')
+                            break
 
-                if project_id:
-                    app.config['JOBS'][job_id] = {
-                        'status': 'running',
-                        'project_id': project_id,
-                        'started_at': datetime.now().isoformat()
-                    }
-                else:
-                    return jsonify({'status': 'not_found'}), 404
+            if project_id:
+                app.config['JOBS'][job_id] = {
+                    'status': 'running',
+                    'project_id': project_id,
+                    'started_at': datetime.now().isoformat()
+                }
             else:
                 return jsonify({'status': 'not_found'}), 404
+        elif job_id not in app.config['JOBS']:
+            return jsonify({'status': 'not_found'}), 404
         
         job = app.config['JOBS'][job_id]
         project_id = job.get('project_id')
