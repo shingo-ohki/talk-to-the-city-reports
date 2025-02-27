@@ -1,3 +1,4 @@
+#  現状、開発環境では ~/src/t3c-dev に配置し、そこで docker compose up している 
 services:
   devcontainer:
     build:
@@ -7,7 +8,6 @@ services:
     user: "1000:1000"
     volumes:
       - .:/workspaces/t3c-dev
-      - ~/.gitconfig:/home/ubuntu/.gitconfig:ro
     deploy:
       resources:
         reservations:
@@ -20,7 +20,7 @@ services:
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     command: sleep infinity
 
-  worker:
+  pipeline-worker: # デフォルトキュー用ワーカー（パイプライン処理用）
     image: t3c-dev-devcontainer:latest
     user: "1000:1000"
     volumes:
@@ -28,8 +28,10 @@ services:
     working_dir: /workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/pipeline
     command: >
       bash -c "
+        cd /workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/pipeline &&
         source /workspaces/t3c-dev/venv/bin/activate && 
-        python ../app/worker.py
+        export PYTHONPATH=/workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/app:/workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/pipeline &&
+        rq worker -w 'rq.worker.Worker' default --name default_worker_$(date +%s)
       "
     depends_on:
       - redis
@@ -41,10 +43,57 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [gpu]
+    env_file:
+      - .env
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PYTHONPATH=/workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/app:/workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/pipeline
 
+  pipeline-schedule-worker:  # 高優先度キュー用ワーカー（定期チェック用）
+    image: t3c-dev-devcontainer:latest
+    user: "1000:1000"
+    volumes:
+      - .:/workspaces/t3c-dev
+    working_dir: /workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/pipeline
+    command: >
+      bash -c "
+        cd /workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/pipeline &&
+        source /workspaces/t3c-dev/venv/bin/activate && 
+        export PYTHONPATH=/workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/app:/workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/pipeline &&
+        rq worker -w 'rq.worker.Worker' high --name schedule_worker_$(date +%s)
+      "
+    depends_on:
+      - redis
+      - ollama
+    env_file:
+      - .env
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PYTHONPATH=/workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/app:/workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/pipeline
+
+  scheduler:
+    image: t3c-dev-devcontainer:latest
+    user: "1000:1000"
+    volumes:
+      - .:/workspaces/t3c-dev
+    working_dir: /workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/app
+    command: >
+      bash -c "
+        source /workspaces/t3c-dev/venv/bin/activate &&
+        rqscheduler --host redis --port 6379 --interval 60
+      "
+#         python scheduler.py
+    depends_on:
+      - redis
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - PYTHONPATH=/workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/app
+    
   ollama:
     image: ollama/ollama:latest
     volumes:
@@ -67,11 +116,21 @@ services:
       - "8080:8080"
     user: "1000:1000"
     volumes:
-      - ./src/ollama/talk-to-the-city-reports/scatter/pipeline/inputs:/app/inputs
-      - ./src/ollama/talk-to-the-city-reports/scatter/pipeline/outputs:/app/outputs
-      - ./src/ollama/talk-to-the-city-reports/scatter/pipeline/configs:/app/configs
       - .:/workspaces/t3c-dev  # プロジェクト全体をマウント
+      # 以下は一時的にコメントアウト
+      # パイプライン関連のファイルを正しくマウント
+      # - ./src/ollama/talk-to-the-city-reports/scatter/pipeline:/app/pipeline
+      # 必要なアプリケーションファイルをコピーするよりも安全にマウント
+      # - ./src/ollama/talk-to-the-city-reports/scatter/app/templates:/app/templates
+      # - ./src/ollama/talk-to-the-city-reports/scatter/app/static:/app/static
+      # working_dirは/appのまま（Dockerfileと一致させる）
     working_dir: /workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/app
+    env_file:
+      - .env
+    #environment:
+      # 一時的に無効化
+      # appファイル内のパス参照を修正するため環境変数を設定
+      # - PIPELINE_BASE_PATH=/app/pipeline
     depends_on:
       - ollama
 
@@ -79,3 +138,12 @@ services:
     image: redis:alpine
     ports:
       - "6379:6379"
+
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
