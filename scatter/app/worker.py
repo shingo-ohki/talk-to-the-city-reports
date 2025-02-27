@@ -30,7 +30,23 @@ def process_pipeline(config_path: str, job_id: str = None, timeout: int = None) 
     original_dir = os.getcwd()
     original_argv = sys.argv
     
+    # 環境変数のバックアップ
+    env_backup = {}
+    
     try:
+        # RQジョブのメタデータから環境変数を取得
+        from rq import get_current_job
+        job = get_current_job()
+        
+        # 環境変数として一時的にAPIキーを設定
+        if job and job.meta.get('env'):
+            for key, value in job.meta['env'].items():
+                env_backup[key] = os.environ.get(key)
+                os.environ[key] = value
+                print(f"Set environment variable: {key}=***")
+        
+        print(f"OPENAI_API_KEY environment variable set: {'OPENAI_API_KEY' in os.environ}")
+
         if job_id:
             print(f"[DEBUG] Processing pipeline for job: {job_id}")
             
@@ -67,6 +83,28 @@ def process_pipeline(config_path: str, job_id: str = None, timeout: int = None) 
         raise
 
     finally:
+        # 環境変数を元に戻す
+        if job and job.meta.get('env'):
+            for key in job.meta['env'].keys():
+                # まずAPIキーを環境変数から確実に削除
+                if key == 'OPENAI_API_KEY':
+                    if key in os.environ:
+                        del os.environ[key]
+                    continue
+
+                # 他の環境変数は元の値に復元
+                if key in env_backup:
+                    if env_backup[key] is not None:
+                        os.environ[key] = env_backup[key]
+                    else:
+                        os.environ.pop(key, None)
+                else:
+                    os.environ.pop(key, None)
+        
+        # 処理完了時にメモリから確実にAPIキーを消去
+        if 'env_backup' in locals() and 'OPENAI_API_KEY' in env_backup:
+            env_backup['OPENAI_API_KEY'] = None
+
         sys.argv = original_argv
         os.chdir(original_dir)
 

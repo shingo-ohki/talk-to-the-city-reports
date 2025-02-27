@@ -192,6 +192,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 formData.append('config', configFile);
             }
 
+            // OpenAI APIキーの追加
+            const apiKey = document.getElementById('openaiApiKey')?.value?.trim();
+            if (apiKey) {
+                formData.append('openaiApiKey', apiKey);
+                console.log('API Key provided: Yes (masked)'); // キーの内容は絶対にログ出力しない
+
+                // 処理完了後にフォームからAPIキーをクリア（セキュリティ対策）
+                setTimeout(() => {
+                    document.getElementById('openaiApiKey').value = '';
+                }, 5000); // 5秒後にクリア（送信完了を待つ）
+            }
+
             // カスタム設定の作成
             const customConfig = {};
 
@@ -245,6 +257,38 @@ document.addEventListener('DOMContentLoaded', () => {
             submitButton.textContent = 'レポートを生成する';
         }
     };
+
+    // フォーム送信前にOpenAIモデル使用時にAPIキーが設定されているか確認する
+    document.getElementById('uploadForm').addEventListener('submit', function(e) {
+        // 設定ファイルからモデル情報を取得
+        const configFile = document.getElementById('configFile').files[0];
+        
+        if (configFile) {
+          const reader = new FileReader();
+          reader.onload = function(event) {
+            try {
+              const config = JSON.parse(event.target.result);
+              const model = config.model || '';
+              
+              // OpenAIモデルの判定
+              const useOpenAI = model.startsWith('gpt-') || model.startsWith('text-');
+              
+              if (useOpenAI) {
+                const apiKey = document.getElementById('openaiApiKey').value;
+                if (!apiKey || !apiKey.startsWith('sk-')) {
+                  e.preventDefault();
+                  alert('OpenAIモデルを使用するにはAPIキーが必要です');
+                  document.getElementById('apiKeyCollapse').classList.add('show');
+                  document.getElementById('openaiApiKey').focus();
+                }
+              }
+            } catch(e) {
+              console.error('設定ファイルの解析に失敗:', e);
+            }
+          };
+          reader.readAsText(configFile);
+        }
+    });
 
     // 古いコピーボタンのイベントリスナーを削除
     document.querySelectorAll('.copy-button').forEach(button => {
