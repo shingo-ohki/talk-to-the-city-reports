@@ -61,6 +61,11 @@ def init_app():
 
 def create_config(filename, output_dir, custom_config=None):
     """設定ファイルを作成する関数"""
+    print(f"=== CREATE_CONFIG DEBUG ===")
+    print(f"Called with filename: {filename}")
+    print(f"output_dir: {output_dir}")
+    print(f"custom_config: {json.dumps(custom_config, indent=2) if custom_config else 'None'}")
+    
     # 1. パイプライン用の基本設定
     pipeline_config = {
         "name": "Recursive Public, Agenda Setting",
@@ -74,7 +79,7 @@ def create_config(filename, output_dir, custom_config=None):
         "extraction": {
             "workers": 3,
             "limit": 150,
-            "prompt": "/system\n\n与えられた投稿を要約し、JSONリストとして返してください。\n追加の説明は含めず、必ずJSONリストのみを返してください。\n予め提供された例や過去の回答を含めないでください。\n投稿内容を要約することができない旨の出力だった場合は、要約せずに与えられた投稿JSONリストとして出力してください\n\n例:\n[\"要約された意見\"]\n\n注意:\n- JSONリストのみを出力\n- システムメッセージや注釈を含めない\n- 過去の例を含めない"
+            "prompt": "/system\n\n与えられた投稿を要約し、文字列のみを要素として持つJSONリストとして返してください。\n辞書型（キーと値のペア）を含めず、文字列のみのリストを返してください。\n追加の説明は含めず、必ずJSONリストのみを返してください。\n予め提供された例や過去の回答を含めないでください。\n投稿内容を要約することができない旨の出力だった場合は、要約せずに与えられた投稿を文字列としてJSONリストの形で出力してください。\n\n正しい例:\n[\"要約された意見1\", \"要約された意見2\"]\n\n誤った例:\n[{\"内容\": \"要約された意見\"}]\n\n注意:\n- 文字列のみを含むJSONリスト形式で出力\n- 辞書型オブジェクトは使用しない\n- システムメッセージや注釈を含めない\n- 過去の例を含めない"
         },
         "clustering": {
             "clusters": 5
@@ -94,7 +99,9 @@ def create_config(filename, output_dir, custom_config=None):
             "prompt": "/system\n\nあなたはシンクタンクで働く専門的なリサーチアシスタントです。あなたのチームは特定のテーマについて市民協議を実施し、様々な意見のクラスター（グループ）分析を始めています。これから、各クラスターのリストと簡単な分析結果が与えられます。あなたの仕事は、その調査結果を短く要約することです。要約は非常に簡潔（最大1段落、4文以内）で、陳腐な表現を避けて書いてください。"
         }
     }
-
+    
+    print(f"Initial pipeline_config input: {pipeline_config['input']}")
+    
     # 2. アプリケーション管理用の設定（別ファイル）
     app_config = {
         "project_id": output_dir,
@@ -110,14 +117,28 @@ def create_config(filename, output_dir, custom_config=None):
         if 'auto_update' in custom_config:
             auto_update_config = custom_config.pop('auto_update')
             save_auto_update_config(output_dir, auto_update_config)
+            print(f"Extracted auto_update config")
 
+        # カスタム設定のマージ前のinput値
+        print(f"Before merge, pipeline_config input: {pipeline_config['input']}")
+        print(f"custom_config contains input? {'input' in custom_config}")
+        if 'input' in custom_config:
+            print(f"custom_config input value: {custom_config['input']}")
+        
         # カスタム設定のマージ（パイプライン設定のみ）
         pipeline_config.update(custom_config)
+        print(f"After merge, pipeline_config input: {pipeline_config['input']}")
+    
+    # 重要: custom_configの有無にかかわらず、input フィールドを強制的に上書き
+    print(f"Forcing input to: {filename}")
+    pipeline_config["input"] = filename
+    print(f"Final pipeline_config input: {pipeline_config['input']}")
 
     # 4. 各設定ファイルの保存
     save_pipeline_config(output_dir, pipeline_config)
     save_app_config(output_dir, app_config)
-
+    
+    print(f"=== END CREATE_CONFIG DEBUG ===")
     return pipeline_config
 
 def save_pipeline_config(output_dir, config):
@@ -279,6 +300,9 @@ def process_custom_config(request):
     Raises:
         ValueError: 設定ファイルのJSONフォーマットが不正な場合
     """
+    print("=== PROCESSING CUSTOM CONFIG ===")
+    print(f"Request files: {request.files}")
+    print(f"Request form: {request.form}")
     custom_config = {}
 
     # 設定ファイルの処理
@@ -297,20 +321,11 @@ def process_custom_config(request):
                 custom_config[prompt_type] = {}
             custom_config[prompt_type]['prompt'] = request.form[f'{prompt_type}Prompt']
 
+    print(f"Resulting custom_config: {custom_config}")
     return custom_config
 
 def process_spreadsheet_data(spreadsheet_url, base_filename, output_dir, custom_config):
-    """スプレッドシートURLからデータを取得して処理する
-
-    Args:
-        spreadsheet_url: スプレッドシートのURL
-        base_filename: 保存するCSVのベースファイル名
-        output_dir: 出力ディレクトリ名
-        custom_config: カスタム設定
-
-    Returns:
-        tuple: (DataFrame, ファイルパス, 設定パス)
-    """
+    """スプレッドシートURLからデータを取得して処理する"""
     print(f"Processing spreadsheet: {spreadsheet_url}")
 
     # スプレッドシートからデータを取得
@@ -321,6 +336,9 @@ def process_spreadsheet_data(spreadsheet_url, base_filename, output_dir, custom_
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_filename}.csv")
     df.to_csv(filepath, index=False)
     print(f"Saved CSV to: {filepath}")
+    
+    # CSVファイルの前処理 - 追加
+    preprocess_csv_file(filepath)
 
     # メイン設定を作成
     config = create_config(base_filename, output_dir, custom_config)
@@ -375,19 +393,48 @@ def process_csv_file(uploaded_file, base_filename, output_dir, custom_config):
     Returns:
         tuple: (DataFrameまたはNone, ファイルパス, 設定パス)
     """
+    print(f"=== PROCESS_CSV_FILE DEBUG ===")
     print(f"Processing uploaded CSV file: {uploaded_file.filename}")
+    print(f"base_filename: {base_filename}")
+    print(f"output_dir: {output_dir}")
+    print(f"custom_config: {json.dumps(custom_config, indent=2) if custom_config else 'None'}")
 
     # CSVファイルを一時保存
     filename = secure_filename(uploaded_file.filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_filename}.csv")
     uploaded_file.save(filepath)
     print(f"Saved CSV to: {filepath}")
+    print(f"File exists: {os.path.exists(filepath)}")
+    print(f"File size: {os.path.getsize(filepath) if os.path.exists(filepath) else 'N/A'}")
+    
+    # CSVファイルの前処理 - 追加
+    preprocess_csv_file(filepath)
+    
+    try:
+        df = pd.read_csv(filepath)
+        print(f"CSV loaded successfully. Shape: {df.shape}")
+        print(f"Columns: {', '.join(df.columns)}")
+    except Exception as e:
+        print(f"Error loading CSV: {str(e)}")
 
     # 設定ファイルを作成
     config = create_config(base_filename, output_dir, custom_config)
+    print(f"Created config with input: {config['input']}")
     config_path = os.path.join(app.config['CONFIG_FOLDER'], f"{output_dir}.json")
     with open(config_path, 'w', encoding='utf-8') as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
+    print(f"Saved config to: {config_path}")
+    print(f"Config file exists: {os.path.exists(config_path)}")
+    
+    # 保存した設定ファイルを読み込んで確認
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            saved_config = json.load(f)
+            print(f"Saved config input value: {saved_config.get('input')}")
+    except Exception as e:
+        print(f"Error reading saved config: {str(e)}")
+        
+    print(f"=== END PROCESS_CSV_FILE DEBUG ===")
 
     return None, filepath, config_path
 
@@ -490,24 +537,98 @@ def generate_unique_project_id(spreadsheet_url, custom_config, request):
 
     return project_id, output_dir, job_id
 
+# app.pyの適切な場所（他のユーティリティ関数の近く）に追加してください
+
+def preprocess_csv_file(filepath):
+    """
+    CSVファイルを前処理して、comment-bodyカラムが常に文字列として扱われ、
+    extraction.pyで処理可能な形式になるようにします
+    """
+    try:
+        print(f"=== PREPROCESS_CSV_FILE ===")
+        print(f"Reading CSV file: {filepath}")
+        
+        # CSVファイルをバックアップ
+        backup_path = f"{filepath}.bak"
+        shutil.copy(filepath, backup_path)
+        print(f"Created backup at: {backup_path}")
+        
+        # CSVを直接読み込み、quotechar設定を適切に行う
+        df = pd.read_csv(filepath, quoting=csv.QUOTE_ALL, escapechar='\\')
+        print(f"DataFrame shape: {df.shape}")
+        print(f"DataFrame columns: {', '.join(df.columns)}")
+        
+        # comment-bodyカラムを確認
+        if 'comment-body' in df.columns:
+            # 最初の行の内容を表示（デバッグ用）
+            if len(df) > 0:
+                sample = df['comment-body'].iloc[0]
+                print(f"Sample comment-body type: {type(sample).__name__}")
+                print(f"Sample comment-body (first 100 chars): {str(sample)[:100]}...")
+                
+            # 各行を処理してJSONエンコード/デコード可能な形式に変換
+            # これにより、後続のJSON処理でエラーが発生しにくくなる
+            def normalize_text(text):
+                if pd.isna(text):
+                    return ""
+                text_str = str(text).strip()
+                # JSON内で問題になりそうな特殊文字をエスケープ
+                return text_str.replace('"', '\\"')
+                
+            df['comment-body'] = df['comment-body'].apply(normalize_text)
+            print(f"Normalized all comment-body values")
+            
+            # 変換後の最初の行を表示（デバッグ用）
+            if len(df) > 0:
+                sample = df['comment-body'].iloc[0]
+                print(f"After conversion - type: {type(sample).__name__}")
+                print(f"After conversion (first 100 chars): {str(sample)[:100]}...")
+        
+        # 処理したDataFrameを保存（クォーティングを明示的に指定）
+        df.to_csv(filepath, index=False, quoting=csv.QUOTE_ALL)
+        print(f"Saved processed CSV to: {filepath}")
+        
+        # 再度読み込んで検証
+        df_verify = pd.read_csv(filepath)
+        if 'comment-body' in df_verify.columns and len(df_verify) > 0:
+            verify_sample = df_verify['comment-body'].iloc[0]
+            print(f"Verification - type: {type(verify_sample).__name__}")
+            print(f"Verification passed: {isinstance(verify_sample, str)}")
+        
+        print(f"=== END PREPROCESS_CSV_FILE ===")
+        return True
+        
+    except Exception as e:
+        print(f"Error preprocessing CSV file: {str(e)}")
+        traceback.print_exc()
+        return False
+
 # upload_file関数を更新
 @app.route('/upload', methods=['POST'])
 def upload_file():
     try:
-        # 1. 基本パラメータの初期化
-        timestamp, output_dir, job_id = initialize_job_params()
-        project_id = output_dir
-        base_filename = output_dir
-        config_path = None
-
-        # 2. カスタム設定の処理
-        custom_config = process_custom_config(request)
+        print("\n=== UPLOAD_FILE DEBUG ===")
+        print(f"request.form: {request.form}")
+        print(f"request.files: {request.files.keys()}")
         
-        # 3. データソースの処理（スプレッドシートまたはCSVファイル）
+        # ジョブパラメータの初期化
+        timestamp, output_dir, job_id = initialize_job_params()
+        base_filename = output_dir  # ファイル名とディレクトリ名を統一
+        print(f"Generated job_id: {job_id}, output_dir: {output_dir}, base_filename: {base_filename}")
+        
+        # カスタム設定を処理
+        try:
+            custom_config = process_custom_config(request)
+            print(f"Processed custom_config: {json.dumps(custom_config, indent=2)}")
+        except ValueError as e:
+            print(f"Error processing custom config: {str(e)}")
+            return handle_error(e, "設定ファイルの処理中にエラーが発生しました")
+        
         if request.form.get('spreadsheet_url'):
             # スプレッドシートURLからデータを処理
             spreadsheet_url = request.form['spreadsheet_url']
             auto_update = request.form.get('autoUpdate') == 'true'
+            print(f"Processing spreadsheet URL: {spreadsheet_url}")
             print(f"Auto update enabled: {auto_update}")
 
             # 自動更新の場合は特別な処理
@@ -532,53 +653,48 @@ def upload_file():
         elif 'fileInput' in request.files and request.files['fileInput'].filename:
             # CSVファイルのアップロード処理
             uploaded_file = request.files['fileInput']
+            print(f"Processing uploaded file: {uploaded_file.filename}")
 
             # 基本的なファイルチェック
             if not uploaded_file.filename.endswith('.csv'):
-                return jsonify({'error': '拡張子がCSVではありません'}), 400
+                return handle_error(ValueError("CSVファイルのみをアップロードしてください"), "不正なファイル形式")
 
-            # ジョブ情報の初期化
+            # ジョブ情報の初期化 - project_idを正しく定義
+            project_id = output_dir
             initialize_job(job_id, project_id, False)
+            print(f"Initialized job: {job_id}, project_id: {project_id}")
 
             # CSVファイルの処理
-            _, filepath, config_path = process_csv_file(
-                uploaded_file, base_filename, output_dir, custom_config
-            )
+            _, filepath, config_path = process_csv_file(uploaded_file, base_filename, output_dir, custom_config)
+            print(f"Processed CSV file. Path: {filepath}, Config: {config_path}")
+
+            # APIキーの処理と取得（モデルに応じて）
+            job_meta = {}
+            api_key = request.form.get('openaiApiKey', '').strip()
+            if (api_key and api_key.startswith('sk-')):
+                job_meta['env'] = {'OPENAI_API_KEY': api_key}
+                print("API key included in job meta")
+
+            # パイプラインジョブをエンキュー
+            print(f"Enqueueing pipeline job: {job_id}, config_path: {config_path}")
+            enqueue_pipeline_job(config_path, job_id, job_meta)
+            print(f"Pipeline job enqueued successfully")
+        
         else:
-            # デバッグ情報を追加
-            print("No valid data source found")
-            print(f"Form data: {request.form}")
-            print(f"Files: {request.files}")
+            print("Error: No input file or spreadsheet URL provided")
+            return handle_error(ValueError("CSVファイルまたはスプレッドシートURLを指定してください"), "入力データがありません")
 
-            for key in request.files:
-                print(f"File key: {key}, filename: {request.files[key].filename}")
-
-            raise ValueError("スプレッドシートURLまたはCSVファイルのいずれかを指定してください")
-
-        # OpenAI APIキーの取得
-        openai_api_key = request.form.get('openaiApiKey')
-
-        # 設定ファイルからモデル情報を取得
-        model_name = custom_config.get('model', 'local:pakachan/elyza-llama3-8b:latest')
-        use_openai = model_name.startswith('gpt-') or model_name.startswith('text-')
-
-        # 環境変数設定（メタデータとして渡す）
-        job_meta = {}
-        if use_openai and openai_api_key:
-            job_meta['env'] = {'OPENAI_API_KEY': openai_api_key}
-
-        # 4. パイプライン処理をキューに追加
-        enqueue_pipeline_job(config_path, job_id, job_meta)
-
+        print("=== END UPLOAD_FILE DEBUG ===\n")
         return jsonify({
-            'success': True,
-            'message': '処理を開始しました',
+            'status': 'success',
             'job_id': job_id,
-            'project_id': project_id
+            'message': '処理を開始しました'
         })
 
     except Exception as e:
-        return handle_error(e, "ファイルアップロード処理でエラーが発生しました")
+        print(f"Unexpected error in upload_file: {str(e)}")
+        traceback.print_exc()
+        return handle_error(e, "アップロード処理中にエラーが発生しました")
 
 # 全ステップのリストを定義
 PIPELINE_STEPS = [
