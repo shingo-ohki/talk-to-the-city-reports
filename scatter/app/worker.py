@@ -39,6 +39,27 @@ def process_pipeline(config_path: str, job_id: str = None, timeout: int = None) 
     env_backup = {}
     
     try:
+        # 設定ファイルの内容を確認
+        debug_log(f"パイプライン処理開始: 設定ファイルパス={config_path}", "DEBUG")
+
+        try:
+            with open(config_path, 'r') as f:
+                config_content = json.load(f)
+                debug_log(f"設定ファイル内容:", "DEBUG")
+                debug_log(f"  - input: {config_content.get('input')}", "DEBUG")
+                debug_log(f"  - model: {config_content.get('model')}", "DEBUG")
+
+                # 入力ファイルのパス確認
+                input_path = config_content.get('input')
+                if input_path:
+                    input_abs_path = os.path.abspath(input_path)
+                    debug_log(f"  - 絶対パス: {input_abs_path}", "DEBUG")
+                    debug_log(f"  - ファイル存在: {os.path.exists(input_path)}", "DEBUG")
+                    if os.path.exists(input_path):
+                        debug_log(f"  - ファイルサイズ: {os.path.getsize(input_path)}", "DEBUG")
+        except Exception as e:
+            debug_log(f"設定ファイル読み込みエラー: {str(e)}", "ERROR")
+
         # RQジョブのメタデータから環境変数を取得
         from rq import get_current_job
         job = get_current_job()
