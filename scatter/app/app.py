@@ -287,7 +287,7 @@ def process_custom_config(request):
     custom_config = {}
 
     # 設定ファイルの処理
-    if request.files.get('config'):
+    if request.files.get('config') and request.files['config'].filename:
         config_file = request.files['config']
         config_content = config_file.read().decode('utf-8')
         try:
@@ -314,6 +314,12 @@ def process_spreadsheet_data(spreadsheet_url, base_filename, output_dir, custom_
     
     # CSVファイルの前処理 - 追加
     preprocess_csv_file(filepath)
+
+    # custom_configがない場合は初期化
+    if custom_config is None:
+        custom_config = {}
+
+    custom_config['input'] = f"inputs/{base_filename}"
 
     # メイン設定を作成
     config = create_config(base_filename, output_dir, custom_config)
@@ -561,7 +567,10 @@ def upload_file():
             print(f"Processing spreadsheet URL: {spreadsheet_url}")
             print(f"Auto update enabled: {auto_update}")
 
-            # 自動更新の場合は特別な処理
+            # デフォルトではoutput_dirをproject_idとして使う
+            project_id = output_dir
+
+            # 自動更新の場合は特別なproject_idを生成
             if auto_update:
                 project_id, output_dir, job_id = generate_unique_project_id(
                     spreadsheet_url, custom_config, request
@@ -579,6 +588,8 @@ def upload_file():
             # 自動更新設定を保存
             if auto_update:
                 setup_auto_update(spreadsheet_url, df, output_dir)
+
+            enqueue_pipeline_job(config_path, job_id)
 
         elif 'fileInput' in request.files and request.files['fileInput'].filename:
             # CSVファイルのアップロード処理
