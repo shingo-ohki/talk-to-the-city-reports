@@ -1,5 +1,5 @@
 from flask import Flask, request, render_template, jsonify, send_from_directory, url_for, current_app
-from flask.cli import with_appcontext, AppGroup
+from flask.cli import with_appcontext
 import os
 import json
 import csv
@@ -35,9 +35,7 @@ UPDATE_INTERVALS = {
 }
 
 redis_conn = Redis(host='redis', port=6379)
-high_priority_queue = Queue('high', connection=redis_conn)    # スケジューラー用の優先キュー
 default_queue = Queue('default', connection=redis_conn)       # 通常の処理用キュー
-q = high_priority_queue
 
 # 必要なディレクトリを作成する関数
 def ensure_directories():
@@ -148,42 +146,6 @@ def save_auto_update_config(output_dir, config):
     with open(config_path, 'w', encoding='utf-8') as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
 
-def run_pipeline(config_path, job_id):
-    try:
-        # ジョブの初期状態を設定
-        app.config['JOBS'][job_id] = {
-            'status': 'queued',
-            'started_at': datetime.now().isoformat(),
-            'current_step': 'initialization',
-            'project_id': config_path.split('/')[-1].replace('.json', ''),
-            'progress': {
-                'current': 0,
-                'total': 100,
-                'step_progress': 0,
-                'step_total': 1
-            }
-        }
-
-        # 既存のステータスファイルを削除（進捗状況をリセット）
-        status_file = os.path.join(
-            app.config['OUTPUT_FOLDER'],
-            app.config['JOBS'][job_id]['project_id'],
-            'status.json'
-        )
-        if os.path.exists(status_file):
-            os.remove(status_file)
-
-        # パイプライン処理をキューに投入
-        if process_pipeline(config_path, job_id=job_id):
-            return True
-        return False
-
-    except Exception as e:
-        print(f"Exception in pipeline: {str(e)}")
-        app.config['JOBS'][job_id]['status'] = 'failed'
-        app.config['JOBS'][job_id]['error'] = str(e)
-        return False
-
 def get_spreadsheet_data(spreadsheet_url):
     """スプレッドシートURLからデータを取得"""
     if 'edit#gid=' in spreadsheet_url:
@@ -204,36 +166,6 @@ def get_spreadsheet_data(spreadsheet_url):
     df.insert(0, 'comment-id', range(1, len(df) + 1))
 
     return df
-
-def process_input_data(data_source):
-    """CSVデータの処理（共通処理）"""
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_dir = f"project_{timestamp}"
-
-    # 一時ファイルの保存
-    input_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{output_dir}.csv")
-    data_source.to_csv(input_path, index=False)
-
-    return input_path, output_dir, timestamp
-
-def process_pipeline(config_path, job_id=None):
-    """パイプライン処理をワーカーにエンキューする関数"""
-    try:
-        # RQジョブをデフォルトキューにエンキュー
-        job = default_queue.enqueue(
-            'worker.process_pipeline',
-            config_path,
-            job_id=job_id,
-            job_timeout=3600,
-            result_ttl=86400
-        )
-        print(f"Queued pipeline job {job.id} for config {config_path}")
-        return True
-            
-    except Exception as e:
-        print(f"Error in process_pipeline: {str(e)}")
-        traceback.print_exc()
-        raise
 
 def handle_error(e: Exception, context: str = "") -> tuple:
     """共通のエラーハンドリング処理
