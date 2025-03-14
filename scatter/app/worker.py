@@ -42,12 +42,6 @@ def process_pipeline(config_path: str, job_id: str = None, timeout: int = None) 
             with open(config_path, 'r') as f:
                 config_content = json.load(f)
 
-                # 入力ファイルのパス確認
-                input_path = config_content.get('input')
-                if input_path:
-                    input_abs_path = os.path.abspath(input_path)
-                    if os.path.exists(input_path):
-                        debug_log(f"  - ファイルサイズ: {os.path.getsize(input_path)}", "DEBUG")
         except Exception as e:
             debug_log(f"設定ファイル読み込みエラー: {str(e)}", "ERROR")
 
@@ -190,7 +184,6 @@ def schedule_next_check(spreadsheet_url, config_path, project_id):
 
     # 実行時刻の設定
     execute_at = datetime.now() + timedelta(seconds=check_interval)
-    execute_timestamp = int(execute_at.timestamp())
 
     next_job = scheduler.enqueue_in(
         timedelta(seconds=check_interval),
@@ -200,9 +193,6 @@ def schedule_next_check(spreadsheet_url, config_path, project_id):
         project_id,
         timeout=300  # RQのタイムアウトオプション
     )
-    
-    # スケジューリング結果の確認（必要な場合のみ保持）
-    scheduled_jobs = redis_conn.zrange('rq:scheduled:high', 0, -1, withscores=True)
     
     return next_job
 
