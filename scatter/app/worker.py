@@ -16,7 +16,6 @@ def debug_log(message, level="INFO"):
 # mainのインポートを前に移動
 PIPELINE_DIR = Path('/workspaces/t3c-dev/src/ollama/talk-to-the-city-reports/scatter/pipeline')
 sys.path.append(str(PIPELINE_DIR))
-debug_log(f"パイプラインディレクトリをPATHに追加: {PIPELINE_DIR}")
 import main
 
 from redis import Redis
@@ -39,22 +38,14 @@ def process_pipeline(config_path: str, job_id: str = None, timeout: int = None) 
     env_backup = {}
     
     try:
-        # 設定ファイルの内容を確認
-        debug_log(f"パイプライン処理開始: 設定ファイルパス={config_path}", "DEBUG")
-
         try:
             with open(config_path, 'r') as f:
                 config_content = json.load(f)
-                debug_log(f"設定ファイル内容:", "DEBUG")
-                debug_log(f"  - input: {config_content.get('input')}", "DEBUG")
-                debug_log(f"  - model: {config_content.get('model')}", "DEBUG")
 
                 # 入力ファイルのパス確認
                 input_path = config_content.get('input')
                 if input_path:
                     input_abs_path = os.path.abspath(input_path)
-                    debug_log(f"  - 絶対パス: {input_abs_path}", "DEBUG")
-                    debug_log(f"  - ファイル存在: {os.path.exists(input_path)}", "DEBUG")
                     if os.path.exists(input_path):
                         debug_log(f"  - ファイルサイズ: {os.path.getsize(input_path)}", "DEBUG")
         except Exception as e:
@@ -127,8 +118,6 @@ def process_pipeline(config_path: str, job_id: str = None, timeout: int = None) 
 def check_spreadsheet_updates(spreadsheet_url, config_path, project_id):
     """スプレッドシートの更新をチェックし、変更があれば処理を実行"""
     try:
-        debug_log(f"プロジェクト {project_id} の更新をチェック")
-
         # 自動更新設定を読み込む
         auto_update_path = config_path.replace('.json', '_auto_update.json')
         auto_update_config = {}
@@ -138,18 +127,14 @@ def check_spreadsheet_updates(spreadsheet_url, config_path, project_id):
                 auto_update_config = json.load(f)
 
         if not auto_update_config.get('enabled', False):
-            debug_log(f"プロジェクト {project_id} の自動更新は無効")
             return
 
         # スプレッドシートの内容を取得してハッシュ化
-        debug_log(f"スプレッドシート {spreadsheet_url} からデータを取得")
         df = get_spreadsheet_data(spreadsheet_url)
         current_hash = hashlib.md5(df.to_csv().encode()).hexdigest()
         last_hash = auto_update_config.get('content_hash')
 
         if current_hash != last_hash:
-            debug_log(f"プロジェクト {project_id} のコンテンツが変更されました。更新を実行します")
-            
             # パイプライン処理をキューに投入
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             job_id = f"job_auto_{timestamp}"
@@ -177,7 +162,6 @@ def check_spreadsheet_updates(spreadsheet_url, config_path, project_id):
             with open(auto_update_path, 'w') as f:
                 json.dump(auto_update_config, f, indent=2)
 
-            debug_log(f"更新ジョブ {job_id} をキューに登録しました")
         else:
             debug_log(f"プロジェクト {project_id} に変更はありません")
 
@@ -208,7 +192,6 @@ def schedule_next_check(spreadsheet_url, config_path, project_id):
     execute_at = datetime.now() + timedelta(seconds=check_interval)
     execute_timestamp = int(execute_at.timestamp())
 
-    debug_log(f"プロジェクト {project_id} の次回チェックをスケジュール: {execute_at}")
     next_job = scheduler.enqueue_in(
         timedelta(seconds=check_interval),
         'worker.check_spreadsheet_updates',
@@ -220,7 +203,6 @@ def schedule_next_check(spreadsheet_url, config_path, project_id):
     
     # スケジューリング結果の確認（必要な場合のみ保持）
     scheduled_jobs = redis_conn.zrange('rq:scheduled:high', 0, -1, withscores=True)
-    debug_log(f"スケジュール済みのチェック数: {len(scheduled_jobs)}")
     
     return next_job
 
