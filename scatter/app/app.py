@@ -1,5 +1,5 @@
 from flask import Flask, request, render_template, jsonify, send_from_directory, url_for, current_app
-from flask.cli import with_appcontext, AppGroup
+from flask.cli import with_appcontext
 import os
 import json
 import csv
@@ -35,9 +35,7 @@ UPDATE_INTERVALS = {
 }
 
 redis_conn = Redis(host='redis', port=6379)
-high_priority_queue = Queue('high', connection=redis_conn)    # スケジューラー用の優先キュー
 default_queue = Queue('default', connection=redis_conn)       # 通常の処理用キュー
-q = high_priority_queue
 
 # 必要なディレクトリを作成する関数
 def ensure_directories():
@@ -102,8 +100,6 @@ def create_config(filename, output_dir, custom_config=None):
             "prompt": "/system\n\nあなたはシンクタンクで働く専門的なリサーチアシスタントです。あなたのチームは特定のテーマについて市民協議を実施し、様々な意見のクラスター（グループ）分析を始めています。これから、各クラスターのリストと簡単な分析結果が与えられます。あなたの仕事は、その調査結果を短く要約することです。要約は非常に簡潔（最大1段落、4文以内）で、陳腐な表現を避けて書いてください。"
         }
     }
-    
-    debug_file_handling("基本設定を作成", None, pipeline_config, "create_config-基本設定")
 
     # 2. アプリケーション管理用の設定（別ファイル）
     app_config = {
@@ -116,8 +112,6 @@ def create_config(filename, output_dir, custom_config=None):
     auto_update_config = None
 
     if custom_config:
-        debug_file_handling("カスタム設定を適用します", None, custom_config, "create_config-カスタム設定前")
-
         # auto_update設定の抽出と保存
         if 'auto_update' in custom_config:
             auto_update_config = custom_config.pop('auto_update')
@@ -125,10 +119,8 @@ def create_config(filename, output_dir, custom_config=None):
         
         # カスタム設定のマージ（パイプライン設定のみ）
         pipeline_config.update(custom_config)
-        debug_file_handling("カスタム設定適用後", None, pipeline_config, "create_config-マージ後")
 
     pipeline_config["input"] = input_file_path
-    debug_file_handling("入力ファイル再設定後", filename, pipeline_config, "create_config-最終設定")
 
     # 4. 各設定ファイルの保存
     save_pipeline_config(output_dir, pipeline_config)
@@ -154,42 +146,6 @@ def save_auto_update_config(output_dir, config):
     with open(config_path, 'w', encoding='utf-8') as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
 
-def run_pipeline(config_path, job_id):
-    try:
-        # ジョブの初期状態を設定
-        app.config['JOBS'][job_id] = {
-            'status': 'queued',
-            'started_at': datetime.now().isoformat(),
-            'current_step': 'initialization',
-            'project_id': config_path.split('/')[-1].replace('.json', ''),
-            'progress': {
-                'current': 0,
-                'total': 100,
-                'step_progress': 0,
-                'step_total': 1
-            }
-        }
-
-        # 既存のステータスファイルを削除（進捗状況をリセット）
-        status_file = os.path.join(
-            app.config['OUTPUT_FOLDER'],
-            app.config['JOBS'][job_id]['project_id'],
-            'status.json'
-        )
-        if os.path.exists(status_file):
-            os.remove(status_file)
-
-        # パイプライン処理をキューに投入
-        if process_pipeline(config_path, job_id=job_id):
-            return True
-        return False
-
-    except Exception as e:
-        print(f"Exception in pipeline: {str(e)}")
-        app.config['JOBS'][job_id]['status'] = 'failed'
-        app.config['JOBS'][job_id]['error'] = str(e)
-        return False
-
 def get_spreadsheet_data(spreadsheet_url):
     """スプレッドシートURLからデータを取得"""
     if 'edit#gid=' in spreadsheet_url:
@@ -210,36 +166,6 @@ def get_spreadsheet_data(spreadsheet_url):
     df.insert(0, 'comment-id', range(1, len(df) + 1))
 
     return df
-
-def process_input_data(data_source):
-    """CSVデータの処理（共通処理）"""
-    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-    output_dir = f"project_{timestamp}"
-
-    # 一時ファイルの保存
-    input_path = os.path.join(app.config['UPLOAD_FOLDER'], f"{output_dir}.csv")
-    data_source.to_csv(input_path, index=False)
-
-    return input_path, output_dir, timestamp
-
-def process_pipeline(config_path, job_id=None):
-    """パイプライン処理をワーカーにエンキューする関数"""
-    try:
-        # RQジョブをデフォルトキューにエンキュー
-        job = default_queue.enqueue(
-            'worker.process_pipeline',
-            config_path,
-            job_id=job_id,
-            job_timeout=3600,
-            result_ttl=86400
-        )
-        print(f"Queued pipeline job {job.id} for config {config_path}")
-        return True
-            
-    except Exception as e:
-        print(f"Error in process_pipeline: {str(e)}")
-        traceback.print_exc()
-        raise
 
 def handle_error(e: Exception, context: str = "") -> tuple:
     """共通のエラーハンドリング処理
@@ -356,15 +282,12 @@ def process_csv_file(uploaded_file, base_filename, output_dir, custom_config):
     filename = secure_filename(uploaded_file.filename)
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_filename}.csv")
     uploaded_file.save(filepath)
-    debug_file_handling("CSVファイルを保存しました", filepath, None, "process_csv_file-保存後")
 
     # CSVファイルの前処理
     preprocess_csv_file(filepath)
-    debug_file_handling("CSVファイルを前処理しました", filepath, None, "process_csv_file-前処理後")
 
     # 設定ファイルを作成
     config = create_config(base_filename, output_dir, custom_config)
-    debug_file_handling("設定ファイルを作成しました", None, config, "process_csv_file-設定作成後")
 
     config_path = os.path.join(app.config['CONFIG_FOLDER'], f"{output_dir}.json")
     with open(config_path, 'w', encoding='utf-8') as f:
@@ -374,7 +297,6 @@ def process_csv_file(uploaded_file, base_filename, output_dir, custom_config):
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
             loaded_config = json.load(f)
-            debug_file_handling("保存した設定ファイルを読み込みました", config_path, loaded_config, "process_csv_file-設定読み込み")
     except Exception as e:
         print(f"設定ファイル読み込みエラー: {str(e)}")
 
@@ -509,40 +431,6 @@ def preprocess_csv_file(filepath):
         print(f"Error preprocessing CSV file: {str(e)}")
         traceback.print_exc()
         return False
-
-# app.py に追加するデバッグ関数
-def debug_file_handling(message, filename=None, config=None, stage="処理"):
-    """ファイル処理のデバッグメッセージを出力するヘルパー関数"""
-    print(f"\n[デバッグ][{stage}] {message}")
-    if filename:
-        print(f"  - ファイルパス: {filename}")
-        if os.path.exists(filename):
-            print(f"  - ファイル存在: はい")
-            try:
-                size = os.path.getsize(filename)
-                print(f"  - ファイルサイズ: {size} バイト")
-            except:
-                print(f"  - ファイルサイズ: 取得不可")
-        else:
-            print(f"  - ファイル存在: いいえ")
-
-    if config:
-        if isinstance(config, dict) and 'input' in config:
-            print(f"  - 設定内のinputパス: {config['input']}")
-            input_path = config['input']
-            if isinstance(input_path, str):
-                print(f"  - 設定内のinputファイル絶対パス: {os.path.abspath(input_path)}")
-                if os.path.exists(input_path):
-                    print(f"  - 設定内のinputファイル存在: はい")
-                else:
-                    print(f"  - 設定内のinputファイル存在: いいえ")
-            else:
-                print(f"  - 設定内のinputがstring型ではありません: {type(input_path)}")
-        elif isinstance(config, dict):
-            print(f"  - 設定内にinputキーが見つかりません: {list(config.keys())}")
-        else:
-            print(f"  - 設定がdict型ではありません: {type(config)}")
-    print("")
 
 # upload_file関数を更新
 @app.route('/upload', methods=['POST'])
