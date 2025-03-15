@@ -45,7 +45,6 @@ def init_app():
     try:
         # 必要なディレクトリを作成
         ensure_directories()
-        print("Application directories initialized")
         return True
         
     except Exception as e:
@@ -424,11 +423,6 @@ def preprocess_csv_file(filepath):
         # 処理したDataFrameを保存（クォーティングを明示的に指定）
         df.to_csv(filepath, index=False, quoting=csv.QUOTE_ALL)
         
-        # 再度読み込んで検証
-        df_verify = pd.read_csv(filepath)
-        if 'comment-body' in df_verify.columns and len(df_verify) > 0:
-            verify_sample = df_verify['comment-body'].iloc[0]
-        
         return True
         
     except Exception as e:
@@ -456,8 +450,6 @@ def upload_file():
             # スプレッドシートURLからデータを処理
             spreadsheet_url = request.form['spreadsheet_url']
             auto_update = request.form.get('autoUpdate') == 'true'
-            print(f"Processing spreadsheet URL: {spreadsheet_url}")
-            print(f"Auto update enabled: {auto_update}")
 
             # デフォルトではoutput_dirをproject_idとして使う
             project_id = output_dir
@@ -511,7 +503,6 @@ def upload_file():
             # パイプラインジョブをエンキュー
             print(f"Enqueueing pipeline job: {job_id}, config_path: {config_path}")
             enqueue_pipeline_job(config_path, job_id, job_meta)
-            print(f"Pipeline job enqueued successfully")
         
         else:
             print("Error: No input file or spreadsheet URL provided")
@@ -713,19 +704,6 @@ def list_reports():
         
     except Exception as e:
         return handle_error(e, "レポート一覧の取得に失敗しました")
-
-# デバッグ用のエラーハンドラーを追加
-@app.errorhandler(400)
-def bad_request_error(error):
-    print(f"400 Error: {error}")
-    return jsonify({
-        'error': 'Bad Request',
-        'message': str(error),
-        'debug_info': {
-            'form_data': dict(request.form),
-            'files': [f.filename for f in request.files.values()]
-        }
-    }), 400
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
