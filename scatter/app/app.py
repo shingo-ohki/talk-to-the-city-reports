@@ -410,10 +410,6 @@ def preprocess_csv_file(filepath):
         
         # comment-bodyカラムを確認
         if 'comment-body' in df.columns:
-            # 最初の行の内容を表示（デバッグ用）
-            if len(df) > 0:
-                sample = df['comment-body'].iloc[0]
-                
             # 各行を処理してJSONエンコード/デコード可能な形式に変換
             # これにより、後続のJSON処理でエラーが発生しにくくなる
             def normalize_text(text):
@@ -424,10 +420,6 @@ def preprocess_csv_file(filepath):
                 return text_str.replace('"', '\\"')
                 
             df['comment-body'] = df['comment-body'].apply(normalize_text)
-            
-            # 変換後の最初の行を表示（デバッグ用）
-            if len(df) > 0:
-                sample = df['comment-body'].iloc[0]
         
         # 処理したDataFrameを保存（クォーティングを明示的に指定）
         df.to_csv(filepath, index=False, quoting=csv.QUOTE_ALL)
