@@ -224,9 +224,9 @@ def process_custom_config(request):
     return custom_config
 
 def setup_auto_update(spreadsheet_url, filepath, output_dir):
-    # ファイルからハッシュを計算
-    with open(filepath, 'rb') as f:
-        content_hash = hashlib.md5(f.read()).hexdigest()
+    df = pd.read_csv(filepath)
+    csv_content = df.to_csv(index=False).encode('utf-8')
+    content_hash = hashlib.md5(csv_content).hexdigest()
     
     auto_update_config = {
         "enabled": True,
