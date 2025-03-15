@@ -126,7 +126,7 @@ def check_spreadsheet_updates(spreadsheet_url, config_path, project_id):
         # スプレッドシートの内容を取得してハッシュ化
         df = get_spreadsheet_data(spreadsheet_url)
 
-        # TODO: わざわざ CSV に変換しなくてもいいかもしれない
+        # TODO: current_hash を取得するためにわざわざファイルにしなくてもいいかもしれない
         # CSVに変換してファイルパスを生成
         temp_csv_path = os.path.join(PIPELINE_DIR, 'inputs', f"temp_{project_id}.csv")
         df.to_csv(temp_csv_path, index=False)
@@ -193,9 +193,6 @@ def schedule_next_check(spreadsheet_url, config_path, project_id):
     redis_conn = Redis(host=REDIS_HOST, port=REDIS_PORT)
     high_queue = Queue('high', connection=redis_conn)
     scheduler = Scheduler(queue=high_queue, connection=redis_conn)
-
-    # 実行時刻の設定
-    execute_at = datetime.now() + timedelta(seconds=check_interval)
 
     next_job = scheduler.enqueue_in(
         timedelta(seconds=check_interval),
