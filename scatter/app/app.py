@@ -1,21 +1,15 @@
-from flask import Flask, request, render_template, jsonify, send_from_directory, url_for, current_app
+from flask import Flask, request, render_template, jsonify, send_from_directory
 from flask.cli import with_appcontext
 import os
 import json
 import csv
-import subprocess
 from werkzeug.utils import secure_filename
-from datetime import datetime, timezone, timedelta
-import threading
-import time
+from datetime import datetime
 from redis import Redis
 from rq import Queue
 import hashlib
 import pandas as pd
 import traceback  # tracebackモジュールを追加
-import sys
-from pathlib import Path
-import importlib.util
 import shutil
 
 app = Flask(__name__, static_folder='static')
