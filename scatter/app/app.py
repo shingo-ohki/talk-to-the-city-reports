@@ -256,33 +256,53 @@ def setup_auto_update(spreadsheet_url, filepath, output_dir):
 
     return auto_update_config
 
-def process_input_data(input_source, base_filename, output_dir, custom_config=None, is_spreadsheet=False):
-    """CSVファイルまたはスプレッドシートからデータを処理する共通関数
+def process_input_data(input_source, base_filename, output_dir, custom_config=None):
+    """CSVファイルまたはスプレッドシートURLからデータを処理する共通関数
     
     Args:
-        input_source: アップロードされたファイルまたはスプレッドシートURL
+        input_source: アップロードされたファイルオブジェクトまたはスプレッドシートURL（文字列）
         base_filename: 出力ベースファイル名
         output_dir: 出力ディレクトリ
         custom_config: カスタム設定辞書
-        is_spreadsheet: スプレッドシートURLかどうか
         
     Returns:
         tuple: (filepath, config_path)
     """
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_filename}.csv")
     
-    # 入力ソースからCSVファイルを生成
-    if is_spreadsheet:
-        # スプレッドシートからデータを取得
-        df = get_spreadsheet_data(input_source)
-        df.to_csv(filepath, index=False)
-        print(f"スプレッドシートからCSVファイルを保存: {filepath}")
+    if isinstance(input_source, str):
+        # URLの基本検証
+        if not (input_source.startswith('http://') or input_source.startswith('https://')):
+            raise ValueError("スプレッドシートURLは http:// または https:// で始まる必要があります")
+
+        if 'docs.google.com/spreadsheets' not in input_source:
+            raise ValueError("GoogleスプレッドシートのURLを入力してください")
+
+        # スプレッドシートデータの取得
+        try:
+            df = get_spreadsheet_data(input_source)
+            df.to_csv(filepath, index=False)
+            print(f"スプレッドシートからCSVファイルを保存: {filepath}")
+        except Exception as e:
+            raise ValueError(f"スプレッドシートからのデータ取得に失敗しました: {str(e)}")
+
+    elif hasattr(input_source, 'save') and hasattr(input_source, 'filename'):
+        # FileStorageオブジェクトの検証
+        if not input_source.filename.lower().endswith('.csv'):
+            raise ValueError("CSVファイル(.csv)のみをアップロードしてください")
+
+        # ファイルの保存
+        try:
+            input_source.save(filepath)
+            print(f"アップロードされたCSVファイルを保存: {filepath}")
+        except Exception as e:
+            raise ValueError(f"CSVファイルの保存中にエラーが発生しました: {str(e)}")
+
     else:
-        # CSVファイルを直接保存
-        input_source.save(filepath)
-        print(f"アップロードされたCSVファイルを保存: {filepath}")
+        # サポートされない入力タイプ
+        raise TypeError("サポートされていない入力タイプです。CSVファイルまたはスプレッドシートURLを指定してください")
     
-    # CSVファイルの前処理
+    # CSVファイルの前処理（共通）
     preprocess_csv_file(filepath)
     
     # カスタム設定がない場合は初期化
@@ -468,8 +488,7 @@ def upload_file():
 
             # 共通処理関数でデータを処理
             filepath, config_path = process_input_data(
-                spreadsheet_url, base_filename, output_dir, 
-                custom_config, is_spreadsheet=True
+                spreadsheet_url, base_filename, output_dir, custom_config
             )
 
             # 自動更新設定を保存
@@ -492,11 +511,8 @@ def upload_file():
             initialize_job(job_id, project_id, False)
             print(f"Initialized job: {job_id}, project_id: {project_id}")
 
-            # TODO: is_spreadsheet=Falseのパラメータは削除できるかも
-            # 共通処理関数でデータを処理
             filepath, config_path = process_input_data(
-                uploaded_file, base_filename, output_dir, 
-                custom_config, is_spreadsheet=False
+                uploaded_file, base_filename, output_dir, custom_config
             )
 
             # APIキーの処理と取得（モデルに応じて）
