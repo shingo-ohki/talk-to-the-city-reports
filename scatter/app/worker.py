@@ -125,7 +125,19 @@ def check_spreadsheet_updates(spreadsheet_url, config_path, project_id):
 
         # スプレッドシートの内容を取得してハッシュ化
         df = get_spreadsheet_data(spreadsheet_url)
-        current_hash = hashlib.md5(df.to_csv().encode()).hexdigest()
+
+        # TODO: わざわざ CSV に変換しなくてもいいかもしれない
+        # CSVに変換してファイルパスを生成
+        temp_csv_path = os.path.join(PIPELINE_DIR, 'inputs', f"temp_{project_id}.csv")
+        df.to_csv(temp_csv_path, index=False)
+        
+        # ファイルからハッシュを計算
+        with open(temp_csv_path, 'rb') as f:
+            current_hash = hashlib.md5(f.read()).hexdigest()
+        
+        # 一時ファイルの削除
+        os.remove(temp_csv_path)
+
         last_hash = auto_update_config.get('content_hash')
 
         if current_hash != last_hash:

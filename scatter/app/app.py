@@ -230,36 +230,15 @@ def process_custom_config(request):
 
     return custom_config
 
-def process_spreadsheet_data(spreadsheet_url, base_filename, output_dir, custom_config):
-    # スプレッドシートからデータを取得
-    df = get_spreadsheet_data(spreadsheet_url)
-
-    # CSVファイルを保存
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_filename}.csv")
-    df.to_csv(filepath, index=False)
+def setup_auto_update(spreadsheet_url, filepath, output_dir):
+    # ファイルからハッシュを計算
+    with open(filepath, 'rb') as f:
+        content_hash = hashlib.md5(f.read()).hexdigest()
     
-    # CSVファイルの前処理 - 追加
-    preprocess_csv_file(filepath)
-
-    # custom_configがない場合は初期化
-    if custom_config is None:
-        custom_config = {}
-
-    custom_config['input'] = f"inputs/{base_filename}"
-
-    # メイン設定を作成
-    config = create_config(base_filename, output_dir, custom_config)
-    config_path = os.path.join(app.config['CONFIG_FOLDER'], f"{output_dir}.json")
-    with open(config_path, 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
-
-    return df, filepath, config_path
-
-def setup_auto_update(spreadsheet_url, df, output_dir):
     auto_update_config = {
         "enabled": True,
         "spreadsheet_url": spreadsheet_url,
-        "content_hash": hashlib.md5(df.to_csv().encode()).hexdigest(),
+        "content_hash": content_hash,
         "last_update": datetime.now().isoformat(),
         "check_count": 0,
         "max_checks": UPDATE_INTERVALS['MAX_CHECK_COUNT'],
@@ -277,30 +256,49 @@ def setup_auto_update(spreadsheet_url, df, output_dir):
 
     return auto_update_config
 
-def process_csv_file(uploaded_file, base_filename, output_dir, custom_config):
-    # CSVファイルを一時保存
-    filename = secure_filename(uploaded_file.filename)
+def process_input_data(input_source, base_filename, output_dir, custom_config=None, is_spreadsheet=False):
+    """CSVファイルまたはスプレッドシートからデータを処理する共通関数
+    
+    Args:
+        input_source: アップロードされたファイルまたはスプレッドシートURL
+        base_filename: 出力ベースファイル名
+        output_dir: 出力ディレクトリ
+        custom_config: カスタム設定辞書
+        is_spreadsheet: スプレッドシートURLかどうか
+        
+    Returns:
+        tuple: (filepath, config_path)
+    """
     filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_filename}.csv")
-    uploaded_file.save(filepath)
-
+    
+    # 入力ソースからCSVファイルを生成
+    if is_spreadsheet:
+        # スプレッドシートからデータを取得
+        df = get_spreadsheet_data(input_source)
+        df.to_csv(filepath, index=False)
+        print(f"スプレッドシートからCSVファイルを保存: {filepath}")
+    else:
+        # CSVファイルを直接保存
+        input_source.save(filepath)
+        print(f"アップロードされたCSVファイルを保存: {filepath}")
+    
     # CSVファイルの前処理
     preprocess_csv_file(filepath)
-
-    # 設定ファイルを作成
+    
+    # カスタム設定がない場合は初期化
+    if custom_config is None:
+        custom_config = {}
+    
+    # 共通のパス指定方法を使用
+    custom_config['input'] = base_filename
+    
+    # 設定ファイルの作成
     config = create_config(base_filename, output_dir, custom_config)
-
     config_path = os.path.join(app.config['CONFIG_FOLDER'], f"{output_dir}.json")
     with open(config_path, 'w', encoding='utf-8') as f:
         json.dump(config, f, indent=2, ensure_ascii=False)
     
-    # 保存した設定ファイルを読み込んで確認
-    try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            loaded_config = json.load(f)
-    except Exception as e:
-        print(f"設定ファイル読み込みエラー: {str(e)}")
-
-    return None, filepath, config_path
+    return filepath, config_path
 
 def initialize_job(job_id, project_id, auto_update=False):
     job_info = {
@@ -468,14 +466,15 @@ def upload_file():
             # ジョブ情報の初期化
             initialize_job(job_id, project_id, auto_update)
 
-            # スプレッドシートデータの処理
-            df, filepath, config_path = process_spreadsheet_data(
-                spreadsheet_url, base_filename, output_dir, custom_config
+            # 共通処理関数でデータを処理
+            filepath, config_path = process_input_data(
+                spreadsheet_url, base_filename, output_dir, 
+                custom_config, is_spreadsheet=True
             )
 
             # 自動更新設定を保存
             if auto_update:
-                setup_auto_update(spreadsheet_url, df, output_dir)
+                setup_auto_update(spreadsheet_url, filepath, output_dir)
 
             enqueue_pipeline_job(config_path, job_id)
 
@@ -493,9 +492,12 @@ def upload_file():
             initialize_job(job_id, project_id, False)
             print(f"Initialized job: {job_id}, project_id: {project_id}")
 
-            # CSVファイルの処理
-            _, filepath, config_path = process_csv_file(uploaded_file, base_filename, output_dir, custom_config)
-            print(f"Processed CSV file. Path: {filepath}, Config: {config_path}")
+            # TODO: is_spreadsheet=Falseのパラメータは削除できるかも
+            # 共通処理関数でデータを処理
+            filepath, config_path = process_input_data(
+                uploaded_file, base_filename, output_dir, 
+                custom_config, is_spreadsheet=False
+            )
 
             # APIキーの処理と取得（モデルに応じて）
             job_meta = {}
