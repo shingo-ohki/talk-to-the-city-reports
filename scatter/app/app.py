@@ -230,33 +230,6 @@ def process_custom_config(request):
 
     return custom_config
 
-'''
-def process_spreadsheet_data(spreadsheet_url, base_filename, output_dir, custom_config):
-    # スプレッドシートからデータを取得
-    df = get_spreadsheet_data(spreadsheet_url)
-
-    # CSVファイルを保存
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_filename}.csv")
-    df.to_csv(filepath, index=False)
-    
-    # CSVファイルの前処理 - 追加
-    preprocess_csv_file(filepath)
-
-    # custom_configがない場合は初期化
-    if custom_config is None:
-        custom_config = {}
-
-    custom_config['input'] = f"inputs/{base_filename}"
-
-    # メイン設定を作成
-    config = create_config(base_filename, output_dir, custom_config)
-    config_path = os.path.join(app.config['CONFIG_FOLDER'], f"{output_dir}.json")
-    with open(config_path, 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
-
-    return df, filepath, config_path
-'''
-
 def setup_auto_update(spreadsheet_url, filepath, output_dir):
     # ファイルからハッシュを計算
     with open(filepath, 'rb') as f:
@@ -282,32 +255,6 @@ def setup_auto_update(spreadsheet_url, filepath, output_dir):
         json.dump(auto_update_config, f, indent=2, ensure_ascii=False)
 
     return auto_update_config
-'''
-def process_csv_file(uploaded_file, base_filename, output_dir, custom_config):
-    # CSVファイルを一時保存
-    filename = secure_filename(uploaded_file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], f"{base_filename}.csv")
-    uploaded_file.save(filepath)
-
-    # CSVファイルの前処理
-    preprocess_csv_file(filepath)
-
-    # 設定ファイルを作成
-    config = create_config(base_filename, output_dir, custom_config)
-
-    config_path = os.path.join(app.config['CONFIG_FOLDER'], f"{output_dir}.json")
-    with open(config_path, 'w', encoding='utf-8') as f:
-        json.dump(config, f, indent=2, ensure_ascii=False)
-    
-    # 保存した設定ファイルを読み込んで確認
-    try:
-        with open(config_path, 'r', encoding='utf-8') as f:
-            loaded_config = json.load(f)
-    except Exception as e:
-        print(f"設定ファイル読み込みエラー: {str(e)}")
-
-    return None, filepath, config_path
-'''
 
 def process_input_data(input_source, base_filename, output_dir, custom_config=None, is_spreadsheet=False):
     """CSVファイルまたはスプレッドシートからデータを処理する共通関数
