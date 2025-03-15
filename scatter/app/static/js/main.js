@@ -63,25 +63,6 @@ async function checkStatus(jobId) {
     }
 }
 
-function toggleSection(card) {
-    const cardBody = card.querySelector('.card-body');
-    const icon = card.querySelector('.toggle-icon');
-    
-    // Bootstrapのcollapseクラスを使用
-    const bsCollapse = new bootstrap.Collapse(cardBody, {
-        toggle: true
-    });
-
-    // アイコンの回転
-    cardBody.addEventListener('shown.bs.collapse', function () {
-        icon.style.transform = 'rotate(180deg)';
-    });
-
-    cardBody.addEventListener('hidden.bs.collapse', function () {
-        icon.style.transform = 'rotate(0deg)';
-    });
-}
-
 // コピー機能の修正
 async function copyPrompt(targetId) {
     const textarea = document.getElementById(targetId);
@@ -288,34 +269,5 @@ document.addEventListener('DOMContentLoaded', () => {
           };
           reader.readAsText(configFile);
         }
-    });
-
-    // 古いコピーボタンのイベントリスナーを削除
-    document.querySelectorAll('.copy-button').forEach(button => {
-        button.replaceWith(button.cloneNode(true));
-    });
-
-    // コピーボタンの機能を追加
-    document.querySelectorAll('.copy-button').forEach(button => {
-        button.addEventListener('click', async () => {
-            const targetId = button.getAttribute('data-target');
-            const textarea = document.getElementById(targetId);
-            const placeholder = textarea.placeholder;
-            
-            try {
-                await navigator.clipboard.writeText(placeholder);
-                
-                // コピー成功時のフィードバック
-                const tooltip = button.querySelector('.copy-tooltip');
-                const originalText = tooltip.textContent;
-                tooltip.textContent = 'コピーしました！';
-                
-                setTimeout(() => {
-                    tooltip.textContent = originalText;
-                }, 2000);
-            } catch (err) {
-                console.error('クリップボードへのコピーに失敗しました:', err);
-            }
-        });
     });
 });

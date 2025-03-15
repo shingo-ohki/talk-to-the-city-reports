@@ -1,21 +1,15 @@
-from flask import Flask, request, render_template, jsonify, send_from_directory, url_for, current_app
+from flask import Flask, request, render_template, jsonify, send_from_directory
 from flask.cli import with_appcontext
 import os
 import json
 import csv
-import subprocess
 from werkzeug.utils import secure_filename
-from datetime import datetime, timezone, timedelta
-import threading
-import time
+from datetime import datetime
 from redis import Redis
 from rq import Queue
 import hashlib
 import pandas as pd
 import traceback  # tracebackモジュールを追加
-import sys
-from pathlib import Path
-import importlib.util
 import shutil
 
 app = Flask(__name__, static_folder='static')
@@ -51,7 +45,6 @@ def init_app():
     try:
         # 必要なディレクトリを作成
         ensure_directories()
-        print("Application directories initialized")
         return True
         
     except Exception as e:
@@ -231,9 +224,9 @@ def process_custom_config(request):
     return custom_config
 
 def setup_auto_update(spreadsheet_url, filepath, output_dir):
-    # ファイルからハッシュを計算
-    with open(filepath, 'rb') as f:
-        content_hash = hashlib.md5(f.read()).hexdigest()
+    df = pd.read_csv(filepath)
+    csv_content = df.to_csv(index=False).encode('utf-8')
+    content_hash = hashlib.md5(csv_content).hexdigest()
     
     auto_update_config = {
         "enabled": True,
@@ -416,10 +409,6 @@ def preprocess_csv_file(filepath):
         
         # comment-bodyカラムを確認
         if 'comment-body' in df.columns:
-            # 最初の行の内容を表示（デバッグ用）
-            if len(df) > 0:
-                sample = df['comment-body'].iloc[0]
-                
             # 各行を処理してJSONエンコード/デコード可能な形式に変換
             # これにより、後続のJSON処理でエラーが発生しにくくなる
             def normalize_text(text):
@@ -430,18 +419,9 @@ def preprocess_csv_file(filepath):
                 return text_str.replace('"', '\\"')
                 
             df['comment-body'] = df['comment-body'].apply(normalize_text)
-            
-            # 変換後の最初の行を表示（デバッグ用）
-            if len(df) > 0:
-                sample = df['comment-body'].iloc[0]
         
         # 処理したDataFrameを保存（クォーティングを明示的に指定）
         df.to_csv(filepath, index=False, quoting=csv.QUOTE_ALL)
-        
-        # 再度読み込んで検証
-        df_verify = pd.read_csv(filepath)
-        if 'comment-body' in df_verify.columns and len(df_verify) > 0:
-            verify_sample = df_verify['comment-body'].iloc[0]
         
         return True
         
@@ -470,8 +450,6 @@ def upload_file():
             # スプレッドシートURLからデータを処理
             spreadsheet_url = request.form['spreadsheet_url']
             auto_update = request.form.get('autoUpdate') == 'true'
-            print(f"Processing spreadsheet URL: {spreadsheet_url}")
-            print(f"Auto update enabled: {auto_update}")
 
             # デフォルトではoutput_dirをproject_idとして使う
             project_id = output_dir
@@ -525,7 +503,6 @@ def upload_file():
             # パイプラインジョブをエンキュー
             print(f"Enqueueing pipeline job: {job_id}, config_path: {config_path}")
             enqueue_pipeline_job(config_path, job_id, job_meta)
-            print(f"Pipeline job enqueued successfully")
         
         else:
             print("Error: No input file or spreadsheet URL provided")
@@ -727,19 +704,6 @@ def list_reports():
         
     except Exception as e:
         return handle_error(e, "レポート一覧の取得に失敗しました")
-
-# デバッグ用のエラーハンドラーを追加
-@app.errorhandler(400)
-def bad_request_error(error):
-    print(f"400 Error: {error}")
-    return jsonify({
-        'error': 'Bad Request',
-        'message': str(error),
-        'debug_info': {
-            'form_data': dict(request.form),
-            'files': [f.filename for f in request.files.values()]
-        }
-    }), 400
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)

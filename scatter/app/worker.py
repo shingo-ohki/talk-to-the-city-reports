@@ -123,20 +123,13 @@ def check_spreadsheet_updates(spreadsheet_url, config_path, project_id):
         if not auto_update_config.get('enabled', False):
             return
 
-        # スプレッドシートの内容を取得してハッシュ化
+        # スプレッドシートの内容を取得
         df = get_spreadsheet_data(spreadsheet_url)
 
-        # TODO: わざわざ CSV に変換しなくてもいいかもしれない
-        # CSVに変換してファイルパスを生成
-        temp_csv_path = os.path.join(PIPELINE_DIR, 'inputs', f"temp_{project_id}.csv")
-        df.to_csv(temp_csv_path, index=False)
-        
-        # ファイルからハッシュを計算
-        with open(temp_csv_path, 'rb') as f:
-            current_hash = hashlib.md5(f.read()).hexdigest()
-        
-        # 一時ファイルの削除
-        os.remove(temp_csv_path)
+        # データフレームから直接ハッシュを計算
+        # CSVに変換して文字列としてハッシュ化
+        csv_content = df.to_csv(index=False).encode('utf-8')
+        current_hash = hashlib.md5(csv_content).hexdigest()
 
         last_hash = auto_update_config.get('content_hash')
 
@@ -148,6 +141,10 @@ def check_spreadsheet_updates(spreadsheet_url, config_path, project_id):
             redis_conn = Redis(host=REDIS_HOST, port=REDIS_PORT)
             default_queue = Queue('default', connection=redis_conn)
             
+            # 処理用に実際のファイルを保存
+            input_path = os.path.join(PIPELINE_DIR, 'inputs', f"{project_id}.csv")
+            df.to_csv(input_path, index=False)
+
             job = default_queue.enqueue(
                 'worker.process_pipeline',
                 config_path,
@@ -193,9 +190,6 @@ def schedule_next_check(spreadsheet_url, config_path, project_id):
     redis_conn = Redis(host=REDIS_HOST, port=REDIS_PORT)
     high_queue = Queue('high', connection=redis_conn)
     scheduler = Scheduler(queue=high_queue, connection=redis_conn)
-
-    # 実行時刻の設定
-    execute_at = datetime.now() + timedelta(seconds=check_interval)
 
     next_job = scheduler.enqueue_in(
         timedelta(seconds=check_interval),
