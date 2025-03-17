@@ -1,3 +1,5 @@
+[広聴AI](https://kouchou-ai.takahiroanno.com) ができたのでそちらの開発に合流しました。
+
 # これは何？
 Talk to the City （今のところ scatter）の改良をしてみるリポジトリ
 
